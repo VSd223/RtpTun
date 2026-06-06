@@ -81,7 +81,7 @@ VPN-приложению нужны права на VPN-сервис, фонов
 
 | | |
 |---|---|
-| 👥 **Наш канал** | [Канал]([https://t.me/RtpTun](https://translate.yandex.ru/translate?url=https://t.me/RtpTun)) |
+| 👥 **Наш канал** | [Канал](https://t.me/RtpTun) |
 | 🐞 **Нашёл баг** | [Открыть Issue](../../issues/new) |
 | 💡 **Есть идея** | [Discussions](../../discussions) |
 | 💸 **Поддержать проект** | [ЮMoney](https://yoomoney.ru) |
