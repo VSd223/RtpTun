@@ -4,7 +4,7 @@
 
 **Быстрый и стабильный VPN для Android**
 
-[![Release](https://img.shields.io/badge/Версия-Beta%201.0.0-blue?style=for-the-badge)](https://github.com/amurcanov/rtptun/releases)
+[![Release](https://img.shields.io/badge/Версия-Beta%201.2.5-blue?style=for-the-badge)](https://github.com/amurcanov/rtptun/releases)
 [![Android](https://img.shields.io/badge/Android-10%2B-green?style=for-the-badge&logo=android)](https://github.com/amurcanov/rtptun/releases)
 [![License](https://img.shields.io/badge/Лицензия-MIT-orange?style=for-the-badge)](LICENSE)
 
