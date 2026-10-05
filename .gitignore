@@ -1,0 +1,46 @@
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Files for the ART/DALVIK Virtual Machine
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+build/
+app/build/
+.kotlin/
+
+# Gradle files
+.gradle/
+gradle-app.setting
+!.gradle/wrapper/gradle-wrapper.jar
+
+# Android Studio / Local configuration
+local.properties
+.navigation/
+captures/
+.externalNativeBuild/
+.cxx/
+*.keystore
+*.jks
+*.p12
+*.pem
+
+# IDE
+.idea/caches/
+.idea/libraries/
+.idea/workspace.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+
+# OS
+.DS_Store
+Thumbs.db
