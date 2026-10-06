@@ -43,6 +43,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -129,6 +130,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.lifecycle.repeatOnLifecycle
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -144,9 +146,15 @@ fun ProfilesTab(
     val profilesStore = remember { ProfilesStore(context) }
     val settingsStore = remember { SettingsStore(context) }
 
-    val profiles by profilesStore.profiles.collectAsStateWithLifecycle(initialValue = emptyList())
-    val groups by profilesStore.groups.collectAsStateWithLifecycle(initialValue = emptyList())
-    val subscriptions by profilesStore.subscriptions.collectAsStateWithLifecycle(initialValue = emptyList())
+    val profilesState by profilesStore.profiles.collectAsStateWithLifecycle(initialValue = null)
+    val groupsState by profilesStore.groups.collectAsStateWithLifecycle(initialValue = null)
+    val subscriptionsState by profilesStore.subscriptions.collectAsStateWithLifecycle(initialValue = null)
+
+    val profiles = profilesState ?: emptyList()
+    val groups = groupsState ?: emptyList()
+    val subscriptions = subscriptionsState ?: emptyList()
+    val isLoadingData = profilesState == null || groupsState == null || subscriptionsState == null
+
 
     var showMoreMenu by remember { mutableStateOf(false) }
     var showCreateSheet by remember { mutableStateOf(false) }
@@ -324,14 +332,16 @@ fun ProfilesTab(
     }
 
     val sortByPing by settingsStore.sortProfilesByPing.collectAsStateWithLifecycle(initialValue = false)
-    val displayProfiles = remember(profiles, pingResults.toMap(), sortByPing) {
-        if (sortByPing) {
-            profiles.sortedWith(compareBy<ConnectionProfile> {
-                val ping = pingResults[it.id]
-                if (ping != null && ping >= 0) ping else Long.MAX_VALUE
-            }.thenBy { it.name })
-        } else {
-            profiles
+    val displayProfiles by remember(profiles, sortByPing) {
+        androidx.compose.runtime.derivedStateOf {
+            if (sortByPing) {
+                profiles.sortedWith(compareBy<ConnectionProfile> {
+                    val ping = pingResults[it.id]
+                    if (ping != null && ping >= 0) ping else Long.MAX_VALUE
+                }.thenBy { it.name })
+            } else {
+                profiles
+            }
         }
     }
     val currentPeer by settingsStore.peer.collectAsStateWithLifecycle(initialValue = "")
@@ -368,7 +378,7 @@ fun ProfilesTab(
     var scannedProfile by remember { mutableStateOf<ConnectionProfile?>(null) }
     var scannedMultipleProfiles by remember { mutableStateOf<ParsedSubscription?>(null) }
     var showFormatsInfoDialog by rememberSaveable { mutableStateOf(false) }
-    var deviceStatuses by remember { mutableStateOf<Map<String, ProfileDeviceStatus>>(emptyMap()) }
+    val deviceStatuses = remember { mutableStateMapOf<String, ProfileDeviceStatus>() }
     var unbindTarget by remember { mutableStateOf<ConnectionProfile?>(null) }
     var unbindOnlyCurrent by remember { mutableStateOf(true) }
     val savedServerDtlsPort by settingsStore.serverDtlsPort.collectAsStateWithLifecycle(initialValue = 56000)
@@ -491,23 +501,26 @@ fun ProfilesTab(
         onImportHandled()
     }
 
-    LaunchedEffect(profiles) {
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    LaunchedEffect(profiles.map { it.id }, savedManualPortsEnabled, savedServerDtlsPort) {
         val androidId = android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "unknown"
         val dtlsPort = if (savedManualPortsEnabled) savedServerDtlsPort else 56000
-        while (true) {
-            profiles.forEach { profile ->
-                if (profile.password.isNotBlank() && profile.peer.isNotBlank()) {
-                    launch {
-                        val status = fetchProfileStatus(profile.peer, dtlsPort, profile.password, androidId)
-                        if (status != null) {
-                            deviceStatuses = deviceStatuses + (profile.id to status)
-                        } else {
-                            deviceStatuses = deviceStatuses + (profile.id to ProfileDeviceStatus(isError = true))
+        lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            while (true) {
+                profiles.forEach { profile ->
+                    if (profile.password.isNotBlank() && profile.peer.isNotBlank()) {
+                        launch {
+                            val status = fetchProfileStatus(profile.peer, dtlsPort, profile.password, androidId)
+                            if (status != null) {
+                                deviceStatuses[profile.id] = status
+                            } else {
+                                deviceStatuses[profile.id] = ProfileDeviceStatus(isError = true)
+                            }
                         }
                     }
                 }
+                kotlinx.coroutines.delay(30000)
             }
-            kotlinx.coroutines.delay(8000)
         }
     }
 
@@ -899,20 +912,20 @@ fun ProfilesTab(
                         val androidId = android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "unknown"
                         val deviceIdToSend = if (unbindOnlyCurrent) androidId else ""
                         val dtlsPort = if (savedManualPortsEnabled) savedServerDtlsPort else 56000
-                        deviceStatuses = deviceStatuses + (target.id to (deviceStatuses[target.id] ?: ProfileDeviceStatus()).copy(isLoading = true))
+                        deviceStatuses[target.id] = (deviceStatuses[target.id] ?: ProfileDeviceStatus()).copy(isLoading = true)
                         scope.launch {
                             val success = sendUnbindRequest(target.peer, dtlsPort, target.password, deviceIdToSend)
                             if (success) {
                                 Toast.makeText(context, if (unbindOnlyCurrent) "Устройство успешно отвязано!" else "Все привязки успешно сброшены!", Toast.LENGTH_SHORT).show()
                                 val status = fetchProfileStatus(target.peer, dtlsPort, target.password, androidId)
                                 if (status != null) {
-                                    deviceStatuses = deviceStatuses + (target.id to status)
+                                    deviceStatuses[target.id] = status
                                 } else {
-                                    deviceStatuses = deviceStatuses + (target.id to ProfileDeviceStatus(isError = true))
+                                    deviceStatuses[target.id] = ProfileDeviceStatus(isError = true)
                                 }
                             } else {
                                 Toast.makeText(context, "Не удалось отвязать устройства", Toast.LENGTH_SHORT).show()
-                                deviceStatuses = deviceStatuses + (target.id to (deviceStatuses[target.id] ?: ProfileDeviceStatus()).copy(isLoading = false))
+                                deviceStatuses[target.id] = (deviceStatuses[target.id] ?: ProfileDeviceStatus()).copy(isLoading = false)
                             }
                         }
                         unbindTarget = null
@@ -1548,7 +1561,16 @@ fun ProfilesTab(
             }
         }
 
-        if (profiles.isEmpty()) {
+        if (isLoadingData) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 48.dp, horizontal = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            }
+        } else if (profiles.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2206,43 +2228,42 @@ private fun parseQrConfig(rawText: String): ConnectionProfile? {
     val trimmed = rawText.trim()
     if (trimmed.isEmpty()) return null
 
-    // 0. Try legacy original WDTT scheme
-    if (trimmed.startsWith("wdtt://")) {
+    // 0. Оригинальный двоеточный формат: wdtt://, qwdtt://, ptvb://
+    if (trimmed.startsWith("wdtt://") || trimmed.startsWith("qwdtt://") || trimmed.startsWith("ptvb://")) {
         try {
-            // wdtt://<server_ip>:<dtls_port>:<wg_port>:<local_port>:<password>:<vk_hash>
-            val parts = trimmed.removePrefix("wdtt://").split(":")
-            if (parts.size >= 6) {
+            val schemePrefix = trimmed.substringBefore("://") + "://"
+            val parts = trimmed.removePrefix(schemePrefix).split(":")
+            if (parts.size >= 5) {
                 val ip = parts[0]
                 val dtlsPort = parts[1]
-                val localPort = parts[3].toIntOrNull() ?: 9000
+                val localPort = parts.getOrNull(3)?.toIntOrNull() ?: 9000
                 val pass = parts[4]
                 val hash = parts.drop(5).joinToString(":")
                 return ConnectionProfile(
                     id = UUID.randomUUID().toString(),
-                    name = "RTpTUN $ip",
+                    name = "Сервер $ip",
                     peer = "$ip:$dtlsPort",
                     vkHashes = hash,
-                    workersPerHash = 9,
+                    workersPerHash = 18,
                     listenPort = localPort,
-                    password = pass
+                    password = pass,
+                    useGlobalHashes = hash.isBlank()
                 )
             }
-        } catch (e: Exception) {
-            // continue parsing if failed
-        }
+        } catch (_: Exception) {}
     }
 
-    // 1. Try URL scheme
-    if (trimmed.startsWith("rtptun://config") || trimmed.startsWith("rtptun:config") ||
+    // 1. URI config схемы: ptvb://, wdtt://, qwdtt://
+    if (trimmed.startsWith("ptvb://config") || trimmed.startsWith("ptvb:config") ||
         trimmed.startsWith("wdtt://config") || trimmed.startsWith("wdtt:config") ||
         trimmed.startsWith("qwdtt://config") || trimmed.startsWith("qwdtt:config")) {
         try {
             val normalized = trimmed
-                .replace("rtptun:config", "rtptun://config")
+                .replace("ptvb:config", "ptvb://config")
                 .replace("wdtt:config", "wdtt://config")
                 .replace("qwdtt:config", "qwdtt://config")
             val uri = android.net.Uri.parse(normalized)
-            val name = uri.getQueryParameter("name") ?: "QR Профиль"
+            val name = uri.getQueryParameter("name") ?: "Импортированный профиль"
             val peerRaw = uri.getQueryParameter("peer") ?: return null
             val dtlsPortParam = uri.getQueryParameter("dtls_port") ?: uri.getQueryParameter("server_port")
             val peer = if (dtlsPortParam != null) {
@@ -2261,28 +2282,25 @@ private fun parseQrConfig(rawText: String): ConnectionProfile? {
                 vkHashes = hashes,
                 workersPerHash = workers,
                 listenPort = port,
-                password = pass
+                password = pass,
+                useGlobalHashes = hashes.isBlank()
             )
-        } catch (e: Exception) {
-            // fallback
-        }
+        } catch (_: Exception) {}
     }
 
-    // 2. Try JSON (raw or base64)
+    // 2. JSON (raw или base64)
     var jsonStr = trimmed
     if (!trimmed.startsWith("{")) {
         try {
             val decodedBytes = android.util.Base64.decode(trimmed, android.util.Base64.DEFAULT)
             jsonStr = String(decodedBytes, Charsets.UTF_8).trim()
-        } catch (e: Exception) {
-            // not base64
-        }
+        } catch (_: Exception) {}
     }
 
     if (jsonStr.startsWith("{")) {
         try {
             val jsonObj = JSONObject(jsonStr)
-            val name = jsonObj.optString("name", "QR Профиль")
+            val name = jsonObj.optString("name", "Импортированный профиль")
             val peer = jsonObj.getString("peer")
             val hashes = jsonObj.optString("hashes", jsonObj.optString("vkHashes", ""))
             val workers = jsonObj.optInt("workers", jsonObj.optInt("workersPerHash", 18))
@@ -2295,11 +2313,10 @@ private fun parseQrConfig(rawText: String): ConnectionProfile? {
                 vkHashes = hashes,
                 workersPerHash = workers,
                 listenPort = port,
-                password = pass
+                password = pass,
+                useGlobalHashes = hashes.isBlank()
             )
-        } catch (e: Exception) {
-            // invalid json
-        }
+        } catch (_: Exception) {}
     }
 
     return null

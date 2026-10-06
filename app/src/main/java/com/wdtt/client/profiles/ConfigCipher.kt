@@ -1,8 +1,12 @@
+// ################################################## 
+// FILE: ConfigCipher.kt 
+// FULL PATH: app/src/main/java/com/wdtt/client/profiles/ConfigCipher.kt 
+// ################################################## 
+
 package com.wdtt.client
 
 import android.util.Base64
 import java.net.URLDecoder
-import java.net.URLEncoder
 import java.util.UUID
 
 object ConfigCipher {
@@ -78,24 +82,17 @@ object ConfigCipher {
             line = line.substringBefore('#')
         }
 
-        // 0. Deep Link: rtptun://import?data=... or https://rtptun.com/import?data=...
-        if (line.startsWith("rtptun://import", ignoreCase = true) || line.contains("/import?data=", ignoreCase = true)) {
-            val uri = android.net.Uri.parse(line)
-            val dataParam = uri.getQueryParameter("data") ?: ""
-            if (dataParam.isNotBlank()) {
-                return parseSingleLineConfig(dataParam)
-            }
-        }
-
-        // 1. XOR Decryption
+        // 1. Дешифрование XOR блоба
         decryptBlobToProfile(line)?.let { return it }
 
-        // 2. URI with Query Params: ptvb://config?, rtptun://config?, wdtt://config?, qwdtt://config?
-        if (line.contains("://config") || line.contains(":config")) {
+        // 2. Ссылки конфигурации: ptvb://, wdtt://, qwdtt://
+        if (line.startsWith("ptvb://config") || line.startsWith("ptvb:config") ||
+            line.startsWith("wdtt://config") || line.startsWith("wdtt:config") ||
+            line.startsWith("qwdtt://config") || line.startsWith("qwdtt:config")
+        ) {
             try {
                 val normalized = line
                     .replace("ptvb:config", "ptvb://config")
-                    .replace("rtptun:config", "rtptun://config")
                     .replace("wdtt:config", "wdtt://config")
                     .replace("qwdtt:config", "qwdtt://config")
                 val uri = android.net.Uri.parse(normalized)
@@ -124,8 +121,8 @@ object ConfigCipher {
             } catch (_: Exception) {}
         }
 
-        // 3. Colon-Separated URI: ptvb://185.22.15.10:56000:wg_port:local_port:password:hash1,hash2
-        if (line.startsWith("ptvb://") || line.startsWith("wdtt://") || line.startsWith("qwdtt://") || line.startsWith("rtptun://")) {
+        // 3. Формат через двоеточие: wdtt://, qwdtt://, ptvb://
+        if (line.startsWith("ptvb://") || line.startsWith("wdtt://") || line.startsWith("qwdtt://")) {
             try {
                 val schemePrefix = line.substringBefore("://") + "://"
                 val parts = line.removePrefix(schemePrefix).split(":")
@@ -135,7 +132,7 @@ object ConfigCipher {
                     val localPort = parts.getOrNull(3)?.toIntOrNull() ?: 9000
                     val pass = parts[4]
                     val hash = parts.drop(5).joinToString(":")
-                    val name = fragmentName ?: "RTpTUN $ip"
+                    val name = fragmentName ?: "Сервер $ip"
                     return ConnectionProfile(
                         id = UUID.randomUUID().toString(),
                         name = name,

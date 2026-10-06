@@ -1,3 +1,8 @@
+// ################################################## 
+// FILE: MainActivity.kt 
+// FULL PATH: app/src/main/java/com/wdtt/client/MainActivity.kt 
+// ################################################## 
+
 package com.wdtt.client
 
 import android.Manifest
@@ -26,32 +31,22 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.filled.VpnKey
-import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Terminal
-import androidx.compose.material.icons.outlined.VpnKey
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -64,7 +59,6 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -73,8 +67,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.LocalContext
+import com.rtptun.client.BuildConfig
 import com.wdtt.client.ui.AppUpdateDialog
-import com.wdtt.client.ui.SupportNoticeDialog
 import com.wdtt.client.ui.ProfilesTab
 import com.wdtt.client.ui.LogsTab
 import com.wdtt.client.ui.SettingsTab
@@ -83,6 +77,8 @@ import com.wdtt.client.ui.AntiBlockTab
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -159,9 +155,8 @@ class MainActivity : ComponentActivity() {
         // Статическая ссылка на текущую Activity
         var currentActivity: MainActivity? = null
 
-        // URI файла .qwdtt, ожидающего импорта
+        // URI файла .rtptun, ожидающего импорта
         val pendingFileUri = mutableStateOf<Uri?>(null)
-
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -209,54 +204,71 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         checkAndRequestNotifications()
-
         handleIncomingIntent(intent)
 
         setContent {
             val settingsStore = remember { SettingsStore(this) }
+            var isConfigReady by remember { mutableStateOf(false) }
+
+            LaunchedEffect(Unit) {
+                withContext(Dispatchers.IO) {
+                    SettingsStore.awaitMigrations(applicationContext)
+                    settingsStore.preloadInitialConfig()
+                    ProfilesStore(applicationContext).preload()
+                }
+                refreshPermissionStates()
+                isConfigReady = true
+            }
+
             val themeMode by settingsStore.themeMode.collectAsStateWithLifecycle(initialValue = "system")
             val isDynamicColor by settingsStore.isDynamicColor.collectAsStateWithLifecycle(initialValue = false)
             val themePalette by settingsStore.themePalette.collectAsStateWithLifecycle(initialValue = "indigo")
-            val firstRunCompleted by settingsStore.firstRunCompleted.collectAsStateWithLifecycle(initialValue = false)
-            var showFirstRunSetup by remember { mutableStateOf(!firstRunCompleted) }
+            val firstRunCompletedState by settingsStore.firstRunCompleted.collectAsStateWithLifecycle(initialValue = null)
+            var showFirstRunSetup by remember(firstRunCompletedState) { mutableStateOf(firstRunCompletedState == false) }
             val scope = rememberCoroutineScope()
 
-            LaunchedEffect(Unit) {
-                refreshPermissionStates()
-            }
-
-            WDTTTheme(themeMode = themeMode, dynamicColor = isDynamicColor, themePalette = themePalette) {
-                MainScreen(
-                    settingsStore = settingsStore,
-                    themeMode = themeMode,
-                    onThemeChange = { mode ->
-                        scope.launch {
-                            settingsStore.saveThemeMode(mode)
-                        }
-                    },
-                    isDynamicColor = isDynamicColor,
-                    onDynamicColorChange = { enabled ->
-                        scope.launch { settingsStore.saveDynamicColor(enabled) }
-                    },
-                    currentPalette = themePalette,
-                    onPaletteChange = { palette ->
-                        scope.launch { settingsStore.saveThemePalette(palette) }
+            RTpTUNTheme(themeMode = themeMode, dynamicColor = isDynamicColor, themePalette = themePalette) {
+                if (!isConfigReady) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AppBackdrop(modifier = Modifier.matchParentSize())
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     }
-                )
-
-                if (showFirstRunSetup && !firstRunCompleted) {
-                    FirstRunPermissionDialog(
-                        notifGranted = notifGrantedState,
-                        batteryIgnored = batteryIgnoredState,
-                        vpnGranted = vpnGrantedState,
-                        onRequestNotif = { requestNotificationPermissionIfNeeded() },
-                        onRequestBattery = { checkAndRequestBattery() },
-                        onRequestVpn = { prepareVpnThen {} },
-                        onComplete = {
-                            showFirstRunSetup = false
-                            scope.launch { settingsStore.saveFirstRunCompleted(true) }
+                } else {
+                    MainScreen(
+                        settingsStore = settingsStore,
+                        themeMode = themeMode,
+                        onThemeChange = { mode ->
+                            scope.launch {
+                                settingsStore.saveThemeMode(mode)
+                            }
+                        },
+                        isDynamicColor = isDynamicColor,
+                        onDynamicColorChange = { enabled ->
+                            scope.launch { settingsStore.saveDynamicColor(enabled) }
+                        },
+                        currentPalette = themePalette,
+                        onPaletteChange = { palette ->
+                            scope.launch { settingsStore.saveThemePalette(palette) }
                         }
                     )
+
+                    if (showFirstRunSetup) {
+                        FirstRunPermissionDialog(
+                            notifGranted = notifGrantedState,
+                            batteryIgnored = batteryIgnoredState,
+                            vpnGranted = vpnGrantedState,
+                            onRequestNotif = { requestNotificationPermissionIfNeeded() },
+                            onRequestBattery = { checkAndRequestBattery() },
+                            onRequestVpn = { prepareVpnThen {} },
+                            onComplete = {
+                                showFirstRunSetup = false
+                                scope.launch { settingsStore.saveFirstRunCompleted(true) }
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -447,7 +459,6 @@ fun MainScreen(
     val unreadErrors by TunnelManager.unreadErrorCount.collectAsStateWithLifecycle()
     val tunnelRunning by TunnelManager.running.collectAsStateWithLifecycle()
     val openAppSettingsRequest by TunnelManager.openAppSettingsRequest.collectAsStateWithLifecycle()
-    val hasSeenWelcomeDialog by settingsStore.hasSeenWelcomeDialog.collectAsStateWithLifecycle(initialValue = true)
     val view = LocalView.current
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -472,10 +483,20 @@ fun MainScreen(
         if (selectedTab == 4) TunnelManager.clearUnreadErrors()
     }
 
+    // Переход на вкладку "Логи" при запуске подключения
     LaunchedEffect(pendingSwitchToLogs, autoSwitchToLogs) {
         if (pendingSwitchToLogs && autoSwitchToLogs) {
             pendingSwitchToLogs = false
             selectedTab = 4
+        }
+    }
+
+    // Если туннель успешно запущен — возвращаем пользователя на главный экран (Подключение, индекс 0)
+    // Если произошла ошибка (tunnelRunning не стал true) — остаёмся на вкладке "Логи"
+    LaunchedEffect(tunnelRunning) {
+        if (tunnelRunning && selectedTab == 4) {
+            delay(800)
+            selectedTab = 0
         }
     }
 
@@ -487,7 +508,7 @@ fun MainScreen(
 
     LaunchedEffect(openAppSettingsRequest) {
         if (openAppSettingsRequest > 0L) {
-            selectedTab = 0
+            selectedTab = 2
         }
     }
 
@@ -500,18 +521,9 @@ fun MainScreen(
 
     var requestCreateProfile by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        val supportShownFor = settingsStore.supportNoticeShownVersionCode.first()
-        val currentCode = BuildConfig.VERSION_CODE
-        if (currentCode >= SettingsStore.SUPPORT_NOTICE_VERSION_CODE &&
-            supportShownFor < SettingsStore.SUPPORT_NOTICE_VERSION_CODE
-        ) {
-            showSupportNotice = true
-        }
-    }
-
     // Тихое автообновление подписок при открытии (не во время туннеля).
     LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(1500)
         val intervalHours = settingsStore.subscriptionAutoRefreshHours.first()
         if (intervalHours == SettingsStore.SUB_AUTO_REFRESH_NEVER) return@LaunchedEffect
         if (TunnelManager.running.value) return@LaunchedEffect
@@ -520,7 +532,7 @@ fun MainScreen(
         val result = runCatching {
             profilesStore.autoRefreshSubscriptionsIfDue(intervalHours)
         }.getOrElse {
-            Log.w("WDTT", "Subscription auto-refresh failed: ${it.message}")
+            Log.w("RTpTUN", "Subscription auto-refresh failed: ${it.message}")
             null
         } ?: return@LaunchedEffect
 
@@ -580,7 +592,7 @@ fun MainScreen(
             )
 
             if (release == null) {
-                Log.w("WDTT", "[WARN] Update check: no release info, local=$currentVersion reason=$reason")
+                Log.w("RTpTUN", "[WARN] Update check: no release info, local=$currentVersion reason=$reason")
                 return
             }
 
@@ -589,7 +601,7 @@ fun MainScreen(
             val postponeUntil = settingsStore.updatePostponeUntil.first()
             val isPostponed = postponeVer == release.versionTag && checkedAt < postponeUntil
             Log.i(
-                "WDTT",
+                "RTpTUN",
                 "Update check: local=$currentVersion remote=${release.versionTag} newer=$hasUpdate postponed=$isPostponed reason=$reason"
             )
 
@@ -598,6 +610,7 @@ fun MainScreen(
             }
         }
 
+        kotlinx.coroutines.delay(2000)
         runUpdateCheck("startup")
 
         while (isActive) {
@@ -625,7 +638,7 @@ fun MainScreen(
                     .padding(padding)
                     .consumeWindowInsets(padding)
             ) {
-                androidx.compose.animation.AnimatedContent(
+                AnimatedContent(
                     targetState = selectedTab,
                     transitionSpec = {
                         val direction = if (targetState > initialState) 1 else -1
@@ -683,7 +696,7 @@ fun MainScreen(
                         if (selectedTab != tabId) {
                             view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                             selectedTab = tabId
-                            if (tabId == 3) TunnelManager.clearUnreadErrors()
+                            if (tabId == 4) TunnelManager.clearUnreadErrors()
                         }
                         dragTargetIndex = -1
                         dragProgress = 0f
@@ -692,87 +705,6 @@ fun MainScreen(
                 )
             }
         }
-
-    }
-
-    if (!hasSeenWelcomeDialog) {
-        AlertDialog(
-            onDismissRequest = { 
-                scope.launch { settingsStore.saveHasSeenWelcomeDialog(true) }
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        "Добро пожаловать в RTpTUN",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        "Быстрый и защищенный клинт для обхода блокировок. Добавьте ссылки или конфиги во вкладке «Профили».",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Следите за обновлениями",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Button(
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(AppLinks.TELEGRAM_CHANNEL))
-                            context.startActivity(intent)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(vertical = 10.dp)
-                    ) {
-                        Text("📢 Telegram-канал", style = MaterialTheme.typography.labelLarge)
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = { scope.launch { settingsStore.saveHasSeenWelcomeDialog(true) } }
-                ) {
-                    Text("Понятно")
-                }
-            }
-        )
-    }
-
-    pendingRelease?.let { release ->
-        AppUpdateDialog(
-            release = release,
-            onPostpone = {
-                pendingRelease = null
-                Toast.makeText(context, "Обновление отложено на 24 часа.", Toast.LENGTH_SHORT).show()
-                scope.launch {
-                    val now = System.currentTimeMillis()
-                    settingsStore.saveUpdatePostpone(
-                        version = release.versionTag,
-                        until = now + 24L * 60L * 60L * 1000L
-                    )
-                }
-            },
-            onUpdate = {
-                pendingRelease = null
-                scope.launch {
-                    openReleaseUrl(context, release.releaseUrl)
-                }
-            }
-        )
-    }
-
-    if (showSupportNotice) {
-        SupportNoticeDialog(
-            versionName = BuildConfig.VERSION_NAME,
-            onDismiss = { dismissSupportNotice() },
-        )
     }
 }
 
@@ -883,7 +815,6 @@ private fun ProxyNavigationBar(
                         ) {
                             Box(contentAlignment = Alignment.TopEnd) {
                                 Icon(
-                                    // Плоские outlined-иконки; активная вкладка — через цветной контейнер.
                                     imageVector = item.unselectedIcon,
                                     contentDescription = item.label,
                                     modifier = Modifier.size(22.dp),
@@ -891,7 +822,7 @@ private fun ProxyNavigationBar(
                                 )
                                 if (item.id == 4 && unreadErrors > 0) {
                                     Badge(
-                                        containerColor = if (tunnelRunning) colors.primary else WDTTColors.warning,
+                                        containerColor = if (tunnelRunning) colors.primary else RTpTUNColors.warning,
                                         contentColor = colors.onPrimary,
                                         modifier = Modifier.offset(x = 12.dp, y = (-8).dp)
                                     ) {

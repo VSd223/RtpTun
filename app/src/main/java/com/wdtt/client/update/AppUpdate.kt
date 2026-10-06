@@ -16,18 +16,19 @@ import kotlinx.coroutines.currentCoroutineContext
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
+import com.rtptun.client.BuildConfig
 
 const val UPDATE_CHECK_NEVER = -1
 const val DEFAULT_UPDATE_CHECK_INTERVAL_HOURS = 12
 
 private const val UPDATE_LOG_TAG = "RTpTUN"
-private const val GITHUB_RELEASES_URL = "https://api.github.com/repos/SpaceNeuroX/proxy-turn-vk-android/releases?per_page=30"
-private const val GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/SpaceNeuroX/proxy-turn-vk-android/releases/latest"
-private const val GITHUB_LATEST_RELEASE_WEB_URL = "https://github.com/SpaceNeuroX/proxy-turn-vk-android/releases/latest"
-private const val GITHUB_RELEASE_TAG_URL_PREFIX = "https://github.com/SpaceNeuroX/proxy-turn-vk-android/releases/tag/"
-private const val GITHUB_RELEASE_BY_TAG_URL_PREFIX = "https://api.github.com/repos/SpaceNeuroX/proxy-turn-vk-android/releases/tags/"
-private const val GITHUB_TAGS_URL = "https://api.github.com/repos/SpaceNeuroX/proxy-turn-vk-android/tags?per_page=100"
-private const val GITHUB_TAG_TREE_URL_PREFIX = "https://github.com/SpaceNeuroX/proxy-turn-vk-android/tree/"
+private const val GITHUB_RELEASES_URL = ""
+private const val GITHUB_LATEST_RELEASE_URL = ""
+private const val GITHUB_LATEST_RELEASE_WEB_URL = ""
+private const val GITHUB_RELEASE_TAG_URL_PREFIX = ""
+private const val GITHUB_RELEASE_BY_TAG_URL_PREFIX = ""
+private const val GITHUB_TAGS_URL = ""
+private const val GITHUB_TAG_TREE_URL_PREFIX = ""
 private const val GITHUB_API_RATE_LIMIT_FALLBACK_MS = 30L * 60L * 1000L
 private val VERSION_NUMBER_REGEX = Regex("\\d+(?:\\.\\d+)*")
 
@@ -57,8 +58,7 @@ suspend fun fetchLatestReleaseInfo(
     localVersion: String? = null,
     includePrerelease: Boolean = false,
 ): AppReleaseInfo? = withContext(Dispatchers.IO) {
-    // Сначала API — там есть assets/.apk. Веб-редирект раньше брался первым и
-    // возвращал версию без downloadUrl → в UI всегда «В браузере».
+    if (GITHUB_RELEASES_URL.isBlank()) return@withContext null
     var latestRelease = fetchReleaseFromLatestEndpoint(includePrerelease)
         ?: fetchLatestReleaseFromList(includePrerelease)
         ?: fetchReleaseFromLatestWebRedirect(includePrerelease)

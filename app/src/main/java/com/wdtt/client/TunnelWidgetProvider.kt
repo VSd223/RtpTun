@@ -9,6 +9,7 @@ import android.content.Intent
 import android.net.VpnService
 import android.widget.RemoteViews
 import android.widget.Toast
+import com.rtptun.client.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch

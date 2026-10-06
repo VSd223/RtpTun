@@ -15,15 +15,15 @@ android {
         ?.ifEmpty { null }
         ?: listOf("arm64-v8a", "armeabi-v7a", "x86_64")
 
-    namespace = "com.wdtt.client"   
+    namespace = "com.rtptun.client"   
     compileSdk = 35
     
     defaultConfig {
-        applicationId = "com.wdtt.client"
+        applicationId = "com.rtptun.client"
         minSdk = 28
         targetSdk = 35
         versionCode = 42
-        versionName = "1.4.4"
+        versionName = "1.3.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

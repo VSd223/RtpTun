@@ -73,6 +73,15 @@ fun AntiBlockTab(
     val obfsMode by settingsStore.obfsMode.collectAsStateWithLifecycle(initialValue = "audio")
     val detailedLogs by settingsStore.detailedLogs.collectAsStateWithLifecycle(initialValue = false)
 
+    val socksPort by settingsStore.socksPort.collectAsStateWithLifecycle(initialValue = SettingsStore.DEFAULT_SOCKS_PORT)
+    val socksAuthEnabled by settingsStore.socksAuthEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val savedSocksUsername by settingsStore.socksUsername.collectAsStateWithLifecycle(initialValue = "")
+    val savedSocksPassword by settingsStore.socksPassword.collectAsStateWithLifecycle(initialValue = "")
+
+    var socksPortInput by rememberSaveable { mutableStateOf("1080") }
+    var socksUsernameInput by rememberSaveable { mutableStateOf("") }
+    var socksPasswordInput by rememberSaveable { mutableStateOf("") }
+
     var dtlsPortInput by rememberSaveable { mutableStateOf("56000") }
     var wgPortInput by rememberSaveable { mutableStateOf("56001") }
     var rawPortInput by rememberSaveable { mutableStateOf("56003") }
@@ -84,6 +93,10 @@ fun AntiBlockTab(
     LaunchedEffect(serverWgPort) { wgPortInput = serverWgPort.toString() }
     LaunchedEffect(serverRawPort) { rawPortInput = serverRawPort.toString() }
     LaunchedEffect(listenPort) { listenPortInput = listenPort.toString() }
+
+    LaunchedEffect(socksPort) { socksPortInput = socksPort.toString() }
+    LaunchedEffect(savedSocksUsername) { socksUsernameInput = savedSocksUsername }
+    LaunchedEffect(savedSocksPassword) { socksPasswordInput = savedSocksPassword }
 
     val scrollState = rememberScrollState()
 
@@ -414,7 +427,114 @@ fun AntiBlockTab(
             }
         }
 
-        // ═══ 3. Маскировка трафика & Транспорт ═══
+        // ═══ 3. SOCKS5 Прокси ═══
+        AppSectionCard {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Router,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = "Настройки SOCKS5 Прокси",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Text(
+                    "Локальный SOCKS5 прокси. Чтобы использовать, выберите режим SOCKS5 на главной вкладке.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                OutlinedTextField(
+                    value = socksPortInput,
+                    onValueChange = { value ->
+                        if (value.all { it.isDigit() } && value.length <= 5) {
+                            socksPortInput = value
+                            value.toIntOrNull()?.let { port ->
+                                scope.launch { settingsStore.saveSocksPort(port) }
+                            }
+                        }
+                    },
+                    label = { Text("Порт SOCKS5 прокси") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+                        Text(
+                            "Авторизация SOCKS5",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "Требовать логин и пароль от клиентов",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = socksAuthEnabled,
+                        onCheckedChange = { enabled ->
+                            scope.launch { settingsStore.saveSocksAuthEnabled(enabled) }
+                        }
+                    )
+                }
+
+                AnimatedVisibility(visible = socksAuthEnabled) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = socksUsernameInput,
+                            onValueChange = { value ->
+                                if (value.toByteArray().size <= 255) {
+                                    socksUsernameInput = value
+                                    scope.launch { settingsStore.saveSocksUsername(value) }
+                                }
+                            },
+                            label = { Text("Логин SOCKS5 (юзер)") },
+                            singleLine = true,
+                            isError = socksAuthEnabled && socksUsernameInput.isBlank(),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        
+                        OutlinedTextField(
+                            value = socksPasswordInput,
+                            onValueChange = { value ->
+                                if (value.toByteArray().size <= 255) {
+                                    socksPasswordInput = value
+                                    scope.launch { settingsStore.saveSocksPassword(value) }
+                                }
+                            },
+                            label = { Text("Пароль SOCKS5") },
+                            singleLine = true,
+                            isError = socksAuthEnabled && socksPasswordInput.isBlank(),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // ═══ 4. Маскировка трафика & Транспорт ═══
         AppSectionCard {
             Column(
                 modifier = Modifier.padding(16.dp),

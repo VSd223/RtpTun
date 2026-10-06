@@ -13,7 +13,7 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application
-        android:name=".WdttApplication"
+        android:name="com.wdtt.client.WdttApplication"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="RTpTUN"
@@ -24,7 +24,7 @@
         android:theme="@style/Theme.WDTTClient">
 
         <activity
-            android:name=".MainActivity"
+            android:name="com.wdtt.client.MainActivity"
             android:configChanges="orientation|screenSize"
             android:screenOrientation="portrait"
             android:launchMode="singleTask"
@@ -85,13 +85,13 @@
         </activity>
 
         <activity
-            android:name=".VpnPermissionActivity"
+            android:name="com.wdtt.client.VpnPermissionActivity"
             android:excludeFromRecents="true"
             android:exported="false"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <service
-            android:name=".TunnelService"
+            android:name="com.wdtt.client.TunnelService"
             android:exported="false"
             android:foregroundServiceType="specialUse"
             android:stopWithTask="false">
@@ -101,7 +101,7 @@
         </service>
 
         <service
-            android:name=".RawTunVpnService"
+            android:name="com.wdtt.client.RawTunVpnService"
             android:exported="false"
             android:permission="android.permission.BIND_VPN_SERVICE">
             <intent-filter>
@@ -111,29 +111,29 @@
 
 
         <activity
-            android:name=".ManlCaptchaActivity"
+            android:name="com.wdtt.client.ManlCaptchaActivity"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
             android:exported="false" />
 
         <activity
-            android:name=".VkAuthActivity"
+            android:name="com.wdtt.client.VkAuthActivity"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
             android:exported="false" />
 
         <receiver
-            android:name=".VkAuthCancelReceiver"
+            android:name="com.wdtt.client.VkAuthCancelReceiver"
             android:exported="false" />
 
         <receiver
-            android:name=".CaptchaCancelReceiver"
+            android:name="com.wdtt.client.CaptchaCancelReceiver"
             android:exported="false" />
 
         <receiver
-            android:name=".TunnelWidgetProvider"
+            android:name="com.wdtt.client.TunnelWidgetProvider"
             android:label="RTpTUN Туннель"
             android:exported="true">
             <intent-filter>
@@ -146,7 +146,7 @@
         </receiver>
 
         <service
-            android:name=".QuickToggleTileService"
+            android:name="com.wdtt.client.QuickToggleTileService"
             android:label="RTpTUN"
             android:icon="@drawable/ic_tile_custom"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"

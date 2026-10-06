@@ -29,7 +29,7 @@ class WireGuardHelper(context: Context) {
     }
 
     class WgTunnel : Tunnel {
-        override fun getName() = "wdtt"
+        override fun getName() = "rtptun"
         override fun onStateChange(newState: Tunnel.State) {}
     }
 
@@ -70,7 +70,7 @@ class WireGuardHelper(context: Context) {
             }
             builder.parsePrivateKey(parsedConfig.`interface`.keyPair.privateKey.toBase64())
 
-            // WDTT and VK calls must stay outside the VPN transport path.
+            // RTpTUN and VK calls must stay outside the VPN transport path.
             val settingsStore = SettingsStore(appContext)
             settingsStore.migrateLegacyWhitelistMode()
             if (FORCE_FULL_TUNNEL) {
