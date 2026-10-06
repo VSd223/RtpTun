@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.rtptun.client.BuildConfig
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +18,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -151,6 +154,7 @@ class SettingsStore(context: Context) {
 
         private val HAS_SEEN_WELCOME_DIALOG = booleanPreferencesKey("has_seen_welcome_dialog")
         private val LAST_SEEN_VERSION_CODE = intPreferencesKey("last_seen_version_code")
+        private val IS_VK_LOGGED_IN = booleanPreferencesKey("is_vk_logged_in")
 
         /** versionCode, при первом запуске после которого включается VKCalls у всех. */
         const val VKCALLS_FORCE_MIGRATION_VERSION = 23
@@ -315,6 +319,10 @@ class SettingsStore(context: Context) {
         scheduleMigrations(this)
     }
 
+    suspend fun preloadInitialConfig() = withContext(Dispatchers.IO) {
+        dataStore.data.first()
+    }
+
     val peer: Flow<String> = dataStore.data.map { it[PEER] ?: "" }
     val vkHashes: Flow<String> = dataStore.data.map { it[VK_HASHES] ?: "" }
     val globalVkHashes: Flow<String> = appContext.dataStore.data.map { it[GLOBAL_VK_HASHES] ?: "" }
@@ -337,14 +345,14 @@ class SettingsStore(context: Context) {
     val deployLogin: Flow<String> = dataStore.data.map { it[DEPLOY_LOGIN] ?: "" }
     val deployPassword: Flow<String> = dataStore.data.map {
         readSecret(it, DEPLOY_PASSWORD_ENCRYPTED, DEPLOY_PASSWORD)
-    }
+    }.flowOn(Dispatchers.IO)
     val deploySshUseKey: Flow<Boolean> = dataStore.data.map { it[DEPLOY_SSH_USE_KEY] ?: false }
     val deploySshPrivateKey: Flow<String> = dataStore.data.map {
         readSecret(it, DEPLOY_SSH_PRIVATE_KEY_ENCRYPTED, DEPLOY_SSH_PRIVATE_KEY)
-    }
+    }.flowOn(Dispatchers.IO)
     val deploySshKeyPassphrase: Flow<String> = dataStore.data.map {
         readSecret(it, DEPLOY_SSH_KEY_PASSPHRASE_ENCRYPTED, DEPLOY_SSH_KEY_PASSPHRASE)
-    }
+    }.flowOn(Dispatchers.IO)
     val deploySshKeyName: Flow<String> = dataStore.data.map { it[DEPLOY_SSH_KEY_NAME] ?: "" }
     val deploySshPort: Flow<String> = dataStore.data.map { it[DEPLOY_SSH_PORT] ?: "" }
     val deployDns1: Flow<String> = dataStore.data.map { it[DEPLOY_DNS1] ?: "1.1.1.1" }
@@ -357,16 +365,16 @@ class SettingsStore(context: Context) {
     // ═══ Пароли и Управление ═══
     val connectionPassword: Flow<String> = dataStore.data.map {
         readSecret(it, CONNECTION_PASSWORD_ENCRYPTED, CONNECTION_PASSWORD)
-    }
+    }.flowOn(Dispatchers.IO)
     val deployMainPassword: Flow<String> = dataStore.data.map {
         readSecret(it, DEPLOY_MAIN_PASSWORD_ENCRYPTED, DEPLOY_MAIN_PASSWORD)
-    }
+    }.flowOn(Dispatchers.IO)
     val deployAdminId: Flow<String> = dataStore.data.map {
         readSecret(it, DEPLOY_ADMIN_ID_ENCRYPTED, DEPLOY_ADMIN_ID)
-    }
+    }.flowOn(Dispatchers.IO)
     val deployBotToken: Flow<String> = dataStore.data.map {
         readSecret(it, DEPLOY_BOT_TOKEN_ENCRYPTED, DEPLOY_BOT_TOKEN)
-    }
+    }.flowOn(Dispatchers.IO)
 
     // ═══ Captcha Solve Mode ═══
     val captchaMode: Flow<String> = dataStore.data.map { it[CAPTCHA_MODE] ?: "auto" }
@@ -429,12 +437,20 @@ class SettingsStore(context: Context) {
     val socksUsername: Flow<String> = dataStore.data.map { it[SOCKS_USERNAME] ?: "" }
     val socksPassword: Flow<String> = dataStore.data.map {
         readSecret(it, SOCKS_PASSWORD_ENCRYPTED, SOCKS_PASSWORD)
-    }
+    }.flowOn(Dispatchers.IO)
     val subscriptionAutoRefreshHours: Flow<Int> = dataStore.data.map {
         it[SUB_AUTO_REFRESH_HOURS] ?: DEFAULT_SUB_AUTO_REFRESH_HOURS
     }
     val firstRunCompleted: Flow<Boolean> = dataStore.data.map {
         it[FIRST_RUN_COMPLETED] ?: false
+    }
+
+    val isVkLoggedIn: Flow<Boolean> = dataStore.data.map {
+        it[IS_VK_LOGGED_IN] ?: false
+    }
+
+    suspend fun saveIsVkLoggedIn(loggedIn: Boolean) {
+        dataStore.edit { prefs -> prefs[IS_VK_LOGGED_IN] = loggedIn }
     }
 
     suspend fun saveFirstRunCompleted(completed: Boolean) {

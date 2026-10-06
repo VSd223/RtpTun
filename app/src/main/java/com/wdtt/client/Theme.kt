@@ -1,5 +1,6 @@
 package com.wdtt.client
 
+import com.rtptun.client.R
 import android.os.Build
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -31,7 +32,7 @@ val InterFontFamily = FontFamily(
 )
 
 // ═══ Типография на Inter ═══
-val WDTTTypography = Typography(
+val RTpTUNTypography = Typography(
     displayLarge = TextStyle(fontFamily = InterFontFamily, fontWeight = FontWeight.Bold, fontSize = 57.sp, lineHeight = 64.sp),
     displayMedium = TextStyle(fontFamily = InterFontFamily, fontWeight = FontWeight.Bold, fontSize = 45.sp, lineHeight = 52.sp),
     displaySmall = TextStyle(fontFamily = InterFontFamily, fontWeight = FontWeight.Bold, fontSize = 36.sp, lineHeight = 44.sp),
@@ -238,7 +239,7 @@ private fun getAppColorScheme(palette: String, isDark: Boolean): androidx.compos
 }
 
 // ═══ Расширенные цвета для кастомных элементов ═══
-object WDTTColors {
+object RTpTUNColors {
     // Статус: подключено
     val connected = Color(0xFF4CAF50)
 
@@ -256,7 +257,7 @@ object WDTTColors {
 }
 
 @Composable
-fun WDTTTheme(
+fun RTpTUNTheme(
     themeMode: String = "system",
     dynamicColor: Boolean = false,
     themePalette: String = "indigo",
@@ -300,7 +301,7 @@ fun WDTTTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = WDTTTypography,
+        typography = RTpTUNTypography,
         content = content
     )
 }

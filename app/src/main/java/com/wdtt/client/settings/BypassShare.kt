@@ -1,5 +1,6 @@
 package com.wdtt.client
 
+import com.rtptun.client.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext

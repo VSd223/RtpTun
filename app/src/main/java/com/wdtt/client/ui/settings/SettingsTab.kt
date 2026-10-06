@@ -80,6 +80,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.wdtt.client.VkAuthWebViewManager
+import com.rtptun.client.BuildConfig
 import com.wdtt.client.ManlCaptchaWebViewManager
 import kotlin.math.roundToInt
 import android.content.ClipData
@@ -230,7 +231,7 @@ fun SettingsTabContent(
     var wbvManualMode by rememberSaveable { mutableStateOf(true) }
     var vkAccountAuth by rememberSaveable { mutableStateOf(false) }
     var vkAuthBusy by remember { mutableStateOf(false) }
-    var vkLoggedIn by remember { mutableStateOf(false) }
+    val vkLoggedIn by settingsStore.isVkLoggedIn.collectAsStateWithLifecycle(initialValue = false)
     var manualPortsEnabled by rememberSaveable { mutableStateOf(false) }
     var serverDtlsPortInput by rememberSaveable { mutableStateOf("56000") }
     var serverWgPortInput by rememberSaveable { mutableStateOf("56001") }
@@ -245,7 +246,7 @@ fun SettingsTabContent(
     }
 
     val currentHashesRaw by settingsStore.vkHashes.collectAsStateWithLifecycle(initialValue = "")
-    val uniqueHashes = remember(currentHashesRaw) { 
+    val uniqueHashes = remember(currentHashesRaw) {
         currentHashesRaw.split(Regex("[,\\s\\n]+"))
             .filter { it.isNotBlank() && it.length >= 16 }
             .distinct()
@@ -323,7 +324,7 @@ fun SettingsTabContent(
         val captchaMethod = settingsStore.captchaSolveMethod.first()
         val wbvCaptchaMethod = settingsStore.captchaWbvSolveMethod.first()
         val vkAuthMode = settingsStore.vkAuthMode.first()
-        
+
         val embeddedPort = PeerAddress.port(peer)
         peerInput = PeerAddress.host(peer)
         val initialHashesList = hashes.split(Regex("[,\\s\\n]+"))
@@ -360,9 +361,8 @@ fun SettingsTabContent(
             val legacy = settingsStore.goDnsCustom.first()
             if (legacy.startsWith("https://", ignoreCase = true)) legacy else ""
         }
-        
+
         initialized = true
-        vkLoggedIn = VkAuthWebViewManager.hasVkSessionCookie()
     }
 
     LaunchedEffect(goDnsCustomStored) {
@@ -393,29 +393,6 @@ fun SettingsTabContent(
             SettingsStore.maxAnonymousWorkers(hashesCount).toFloat()
         }
         workersInput = roundToGroup(savedWorkers.toFloat(), maxW, vkAccountAuth)
-    }
-
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                vkLoggedIn = VkAuthWebViewManager.hasVkSessionCookie()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    LaunchedEffect(vkAuthBusy) {
-        if (!vkAuthBusy) {
-            vkLoggedIn = VkAuthWebViewManager.hasVkSessionCookie()
-        }
-    }
-
-    LaunchedEffect(vkAccountAuth) {
-        if (vkAccountAuth) {
-            vkLoggedIn = VkAuthWebViewManager.hasVkSessionCookie()
-        }
     }
 
     LaunchedEffect(savedManualPortsEnabled) {
@@ -482,9 +459,9 @@ fun SettingsTabContent(
     val isPeerValid = peerInput.isNotBlank()
     val isHashesValid = combinedHashes.isNotBlank()
     val socksAuthValid = connectionMode != SettingsStore.CONNECTION_MODE_SOCKS || !socksAuthEnabled ||
-        (socksUsernameInput.isNotBlank() && socksPasswordInput.isNotBlank())
+            (socksUsernameInput.isNotBlank() && socksPasswordInput.isNotBlank())
     val isValid = isPeerValid && isHashesValid && savedConnectionPassword.isNotBlank() &&
-        !hasInputHashErrors && socksAuthValid
+            !hasInputHashErrors && socksAuthValid
     val effectiveServerDtlsPort = if (manualPortsEnabled) serverDtlsPortInput.toIntOrNull()?.coerceIn(1, 65535) ?: 56000 else 56000
     val effectiveLocalPort = if (manualPortsEnabled) portInput.toIntOrNull()?.coerceIn(1, 65535) ?: 9000 else 9000
     fun startTunnelService() {
@@ -567,13 +544,13 @@ fun SettingsTabContent(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(8.dp))
-                    Text("О проекте qWDTT / RTpTUN", fontWeight = FontWeight.Bold)
+                    Text("О проекте RTpTUN", fontWeight = FontWeight.Bold)
                 }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "qWDTT / RTpTUN — клиентское приложение для обхода блокировок через VK и WebRTC.",
+                        "RTpTUN — клиентское приложение для обхода блокировок через VK и WebRTC.",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     HorizontalDivider()
@@ -588,7 +565,7 @@ fun SettingsTabContent(
                         style = MaterialTheme.typography.bodySmall
                     )
                     Text(
-                        "🚀 Разработка и форк qWDTT:\nSpaceNeuroX (github.com/SpaceNeuroX/proxy-turn-vk-android)",
+                        "🚀 Разработка и форк RTpTUN:\nSpaceNeuroX (github.com/SpaceNeuroX/proxy-turn-vk-android)",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Text(
@@ -652,22 +629,22 @@ fun SettingsTabContent(
                 val cleaned3 = stripVkUrlStatic(h3)
                 val cleaned4 = stripVkUrlStatic(h4)
                 val combined = normalizeHashes(cleaned1, cleaned2, cleaned3, cleaned4)
-                
+
                 scope.launch {
                     val currentProfileIdStr = settingsStore.currentProfileId.first()
                     val currentProfile = profiles.firstOrNull { it.id == currentProfileIdStr }
-                    
+
                     if (currentProfileIdStr.isEmpty() || (currentProfile != null && currentProfile.useGlobalHashes)) {
                         settingsStore.saveGlobalVkHashes(combined)
                     }
-                    
+
                     // Coerce workers count to new max immediately!
                     val newHashCount = combined.split(",").filter { it.isNotBlank() && it.length >= 16 }.size.coerceAtLeast(1)
                     val newMax = SettingsStore.maxAnonymousWorkers(newHashCount)
                     if (workersInput > newMax) {
                         workersInput = newMax.toFloat()
                     }
-                    
+
                     saveTunnelSettingsNow(combined) { showHashesDialog = false }
                 }
             },
@@ -712,1166 +689,988 @@ fun SettingsTabContent(
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                    // ═══ Раздел: Оформление ═══
-                    Text(
-                        "Оформление",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                        // ═══ Раздел: Оформление ═══
+                        Text(
+                            "Оформление",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
 
-                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        // Тема оформления
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                "Тема оформления",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                ProtocolChip(
-                                    label = "Сист.",
-                                    selected = themeMode == "system",
-                                    enabled = true,
-                                    isError = false,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    onThemeChange("system")
-                                }
-                                ProtocolChip(
-                                    label = "Свет.",
-                                    selected = themeMode == "light",
-                                    enabled = true,
-                                    isError = false,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    onThemeChange("light")
-                                }
-                                ProtocolChip(
-                                    label = "Темн.",
-                                    selected = themeMode == "dark",
-                                    enabled = true,
-                                    isError = false,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    onThemeChange("dark")
-                                }
-                            }
-                        }
-
-                        val supportsDynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                        if (supportsDynamicColor) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-                                    Text(
-                                        "Динамические цвета",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        "Material You",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Switch(
-                                    checked = isDynamicColor,
-                                    onCheckedChange = { onDynamicColorChange(it) },
-                                    modifier = Modifier.scale(0.8f)
-                                )
-                            }
-                        }
-
-                        // Выбор палитры, если динамические цвета выключены
-                        if (!isDynamicColor || !supportsDynamicColor) {
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            // Тема оформления
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
-                                    "Цветовая палитра",
+                                    "Тема оформления",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.SemiBold
                                 )
-                                
+
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    PaletteCircleOption("indigo", 0xFF5B588D, currentPalette, onPaletteChange)
-                                    PaletteCircleOption("forest", 0xFF5F5D68, currentPalette, onPaletteChange)
-                                    PaletteCircleOption("espresso", 0xFF6D4C41, currentPalette, onPaletteChange)
-                                    PaletteCircleOption("cyberpunk", 0xFF00E5FF, currentPalette, onPaletteChange)
-                                    PaletteCircleOption("amoled", 0xFF00E676, currentPalette, onPaletteChange)
-                                }
-                            }
-                        }
-                    }
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                    // ═══ Раздел: Поведение ═══
-                    Text(
-                        "Поведение",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-                            Text(
-                                "Логи при подключении",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                "Переключаться на вкладку «Логи» при запуске туннеля",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = autoSwitchToLogs,
-                            onCheckedChange = { enabled ->
-                                scope.launch { settingsStore.saveAutoSwitchToLogs(enabled) }
-                            }
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-                            Text(
-                                "Схема подключения",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                "Показывать этапы DNS → VK → DTLS → VPN на вкладке «Логи»",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = connectionPipelineEnabled,
-                            onCheckedChange = { enabled ->
-                                scope.launch {
-                                    settingsStore.saveConnectionPipelineEnabled(enabled)
-                                    if (!enabled) {
-                                        TunnelManager.hideConnectionPipelineForSettings()
+                                    ProtocolChip(
+                                        label = "Сист.",
+                                        selected = themeMode == "system",
+                                        enabled = true,
+                                        isError = false,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        onThemeChange("system")
+                                    }
+                                    ProtocolChip(
+                                        label = "Свет.",
+                                        selected = themeMode == "light",
+                                        enabled = true,
+                                        isError = false,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        onThemeChange("light")
+                                    }
+                                    ProtocolChip(
+                                        label = "Темн.",
+                                        selected = themeMode == "dark",
+                                        enabled = true,
+                                        isError = false,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        onThemeChange("dark")
                                     }
                                 }
                             }
-                        )
-                    }
 
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-                            Text(
-                                "Отключать на Wi-Fi",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                "Автоматически отключать туннель при подключении к Wi-Fi (удобно для обхода БС только в мобильной сети)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = stopOnWifi,
-                            onCheckedChange = { enabled ->
-                                scope.launch { settingsStore.saveStopOnWifi(enabled) }
-                            }
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-                            Text(
-                                "Автообновление обхода",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                "Каждые ${BypassRoutes.AUTO_REFRESH_INTERVAL_MS / 60_000} мин перерезолвить домены. Если IP сменились — кратко пересоберёт VPN (может рвать игру/звонки)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = bypassAutoRefresh,
-                            onCheckedChange = { enabled ->
-                                scope.launch {
-                                    settingsStore.saveBypassAutoRefresh(enabled)
-                                    if (!enabled) {
-                                        BypassRoutes.stopAutoRefresh()
-                                    } else if (TunnelManager.running.first()) {
-                                        BypassRoutes.startAutoRefresh(TunnelManager.scope, context) {
-                                            TunnelManager.addNetworkLog(
-                                                "[ОБХОД] IP доменов изменились — обновляю маршруты VPN"
-                                            )
-                                            TunnelManager.reloadWireGuard()
-                                        }
+                            val supportsDynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                            if (supportsDynamicColor) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+                                        Text(
+                                            "Динамические цвета",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            "Material You",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
-                                }
-                            }
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    val subRefreshLabel = when (subscriptionAutoRefreshHours) {
-                        SettingsStore.SUB_AUTO_REFRESH_NEVER -> "Выкл"
-                        SettingsStore.SUB_AUTO_REFRESH_EVERY_OPEN -> "При каждом открытии"
-                        6 -> "Каждые 6 ч"
-                        24 -> "Каждые 24 ч"
-                        else -> "Каждые 12 ч"
-                    }
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            "Автообновление подписок",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            "Подтягивать профили с сервера подписки при открытии приложения (когда туннель выключен)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        ExposedDropdownMenuBox(
-                            expanded = subAutoRefreshMenuExpanded,
-                            onExpandedChange = { subAutoRefreshMenuExpanded = !subAutoRefreshMenuExpanded }
-                        ) {
-                            OutlinedTextField(
-                                value = subRefreshLabel,
-                                onValueChange = {},
-                                readOnly = true,
-                                modifier = Modifier
-                                    .menuAnchor()
-                                    .fillMaxWidth(),
-                                label = { Text("Интервал") },
-                                trailingIcon = {
-                                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = subAutoRefreshMenuExpanded)
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                            )
-                            ExposedDropdownMenu(
-                                expanded = subAutoRefreshMenuExpanded,
-                                onDismissRequest = { subAutoRefreshMenuExpanded = false }
-                            ) {
-                                listOf(
-                                    SettingsStore.SUB_AUTO_REFRESH_NEVER to "Выкл",
-                                    6 to "Каждые 6 ч",
-                                    SettingsStore.DEFAULT_SUB_AUTO_REFRESH_HOURS to "Каждые 12 ч",
-                                    24 to "Каждые 24 ч",
-                                    SettingsStore.SUB_AUTO_REFRESH_EVERY_OPEN to "При каждом открытии",
-                                ).forEach { (hours, title) ->
-                                    DropdownMenuItem(
-                                        text = { Text(title) },
-                                        onClick = {
-                                            subAutoRefreshMenuExpanded = false
-                                            scope.launch {
-                                                settingsStore.saveSubscriptionAutoRefreshHours(hours)
-                                            }
-                                        },
-                                        trailingIcon = {
-                                            if (subscriptionAutoRefreshHours == hours) {
-                                                Icon(
-                                                    Icons.Default.CheckCircle,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.primary
-                                                )
-                                            }
-                                        }
+                                    Switch(
+                                        checked = isDynamicColor,
+                                        onCheckedChange = { onDynamicColorChange(it) },
+                                        modifier = Modifier.scale(0.8f)
                                     )
                                 }
                             }
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(10.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-                            Text(
-                                "Подробные логи",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                "Записывать больше диагностической информации (замедляет работу)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = detailedLogs,
-                            onCheckedChange = { enabled ->
-                                scope.launch { settingsStore.saveDetailedLogs(enabled) }
-                            }
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-                            Text(
-                                "Проверять обновления",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                "Автоматически проверять наличие обновлений при открытии приложения",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = updateCheckIntervalHours != com.wdtt.client.UPDATE_CHECK_NEVER,
-                            onCheckedChange = { enabled ->
-                                scope.launch {
-                                    val newInterval = if (enabled) {
-                                        com.wdtt.client.DEFAULT_UPDATE_CHECK_INTERVAL_HOURS
-                                    } else {
-                                        com.wdtt.client.UPDATE_CHECK_NEVER
-                                    }
-                                    settingsStore.saveUpdateCheckIntervalHours(newInterval)
-                                }
-                            }
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-                            Text(
-                                "Бета-обновления",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                "Показывать pre-release сборки с GitHub (v*-beta)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = includeBetaUpdates,
-                            onCheckedChange = { enabled ->
-                                scope.launch { settingsStore.saveIncludeBetaUpdates(enabled) }
-                            }
-                        )
-                    }
-
-                    val notificationsEnabled = NotificationHelper.areNotificationsEnabled(context)
-                    if (!notificationsEnabled) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.55f),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Text(
-                                    "Уведомления отключены",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                )
-                                Text(
-                                    "Без них не видно статус туннеля, капчу и вход VK. На Xiaomi/Samsung включите уведомления для RTpTUN вручную.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                )
-                                OutlinedButton(
-                                    onClick = {
-                                        (context as? com.wdtt.client.MainActivity)?.let { activity ->
-                                            if (Build.VERSION.SDK_INT >= 33 &&
-                                                !NotificationHelper.hasPostNotificationsPermission(context)
-                                            ) {
-                                                activity.requestNotificationPermissionIfNeeded()
-                                            } else {
-                                                activity.openNotificationSettings()
-                                            }
-                                        } ?: NotificationHelper.openAppNotificationSettings(context)
-                                    },
-                                    shape = RoundedCornerShape(10.dp),
+                            // Выбор палитры, если динамические цвета выключены
+                            if (!isDynamicColor || !supportsDynamicColor) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Text("Включить уведомления")
+                                    Text(
+                                        "Цветовая палитра",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        PaletteCircleOption("indigo", 0xFF5B588D, currentPalette, onPaletteChange)
+                                        PaletteCircleOption("forest", 0xFF5F5D68, currentPalette, onPaletteChange)
+                                        PaletteCircleOption("espresso", 0xFF6D4C41, currentPalette, onPaletteChange)
+                                        PaletteCircleOption("cyberpunk", 0xFF00E5FF, currentPalette, onPaletteChange)
+                                        PaletteCircleOption("amoled", 0xFF00E676, currentPalette, onPaletteChange)
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    // ═══ Раздел: Интерфейс ═══
-                    Text(
-                        "Интерфейс",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // ═══ Раздел: Поведение ═══
                         Text(
-                            "Режим приложения",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
+                            "Поведение",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
                         )
-                        Text(
-                            "В режиме пользователя вкладка «Серверы» скрыта.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            ProtocolChip(
-                                label = "Пользователь",
-                                selected = interfaceRole == "user",
-                                enabled = true,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                scope.launch { settingsStore.saveInterfaceRole("user") }
-                            }
-                            ProtocolChip(
-                                label = "Админ",
-                                selected = interfaceRole == "admin",
-                                enabled = true,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                scope.launch { settingsStore.saveInterfaceRole("admin") }
-                            }
-                        }
-                    }
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                    // ═══ Раздел: Сеть ═══
-                    Text(
-                        "Сеть",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    GoDnsSettingsSection(
-                        goDnsPreset = goDnsPreset,
-                        goDnsCustomInput = goDnsCustomInput,
-                        goDnsDohCustomInput = goDnsDohCustomInput,
-                        tunnelRunning = tunnelRunning,
-                        onPresetChange = { preset ->
-                            scope.launch {
-                                settingsStore.saveGoDns(
-                                    preset = preset,
-                                    custom = goDnsCustomInput,
-                                    dohCustom = goDnsDohCustomInput,
-                                )
-                            }
-                        },
-                        onCustomChange = { value ->
-                            goDnsCustomInput = value
-                            scope.launch {
-                                settingsStore.saveGoDns(
-                                    preset = goDnsPreset,
-                                    custom = goDnsCustomInput,
-                                    dohCustom = goDnsDohCustomInput,
-                                )
-                            }
-                        },
-                        onDohCustomChange = { value ->
-                            goDnsDohCustomInput = value
-                            scope.launch {
-                                settingsStore.saveGoDns(
-                                    preset = goDnsPreset,
-                                    custom = goDnsCustomInput,
-                                    dohCustom = goDnsDohCustomInput,
-                                )
-                            }
-                        },
-                    )
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                    // ═══ Раздел: SOCKS5 Прокси ═══
-                    Text(
-                        "Настройки SOCKS5 Прокси",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    OutlinedTextField(
-                        value = socksPortInput,
-                        onValueChange = { value ->
-                            if (value.all { it.isDigit() } && value.length <= 5) {
-                                socksPortInput = value
-                                value.toIntOrNull()?.let { port ->
-                                    scope.launch { settingsStore.saveSocksPort(port) }
-                                }
-                            }
-                        },
-                        label = { Text("Порт SOCKS5 прокси") },
-                        singleLine = true,
-                        enabled = !tunnelRunning,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-                            Text(
-                                "Авторизация SOCKS5",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
-                            )
-                            Text(
-                                "Требовать логин и пароль от клиентов",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Switch(
-                            checked = socksAuthEnabled,
-                            onCheckedChange = { enabled ->
-                                scope.launch {
-                                    settingsStore.saveSocksAuthEnabled(enabled)
-                                }
-                            },
-                            enabled = !tunnelRunning,
-                        )
-                    }
-
-                    AnimatedVisibility(visible = socksAuthEnabled) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
-                                value = socksUsernameInput,
-                                onValueChange = { value ->
-                                    if (value.toByteArray().size <= 255) {
-                                        socksUsernameInput = value
-                                        scope.launch {
-                                            settingsStore.saveSocksUsername(value)
-                                        }
-                                    }
-                                },
-                                label = { Text("Логин SOCKS5 (юзер)") },
-                                singleLine = true,
-                                enabled = !tunnelRunning,
-                                isError = socksUsernameInput.isBlank(),
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(14.dp),
-                            )
-                            OutlinedTextField(
-                                value = socksPasswordInput,
-                                onValueChange = { value ->
-                                    if (value.toByteArray().size <= 255) {
-                                        socksPasswordInput = value
-                                        scope.launch {
-                                            settingsStore.saveSocksPassword(value)
-                                        }
-                                    }
-                                },
-                                label = { Text("Пароль SOCKS5") },
-                                singleLine = true,
-                                enabled = !tunnelRunning,
-                                isError = socksPasswordInput.isBlank(),
-                                visualTransformation = PasswordVisualTransformation(),
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(14.dp),
-                            )
-                            if (!socksAuthValid) {
-                                Text(
-                                    "Заполните логин и пароль SOCKS5",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.error,
-                                )
-                            }
-                        }
-                    }
-
-                    Surface(
-                        onClick = {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val socksAddr = SettingsStore.socksListenAddress(socksPortInput.toIntOrNull() ?: socksPort)
-                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("socks", socksAddr))
-                            Toast.makeText(context, "Скопировано: $socksAddr", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Прокси-адрес", style = MaterialTheme.typography.labelMedium)
+                            Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
                                 Text(
-                                    SettingsStore.socksListenAddress(socksPortInput.toIntOrNull() ?: socksPort),
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                    "Логи при подключении",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    "Переключаться на вкладку «Логи» при запуске туннеля",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            Icon(Icons.Filled.ContentCopy, contentDescription = "Скопировать", tint = MaterialTheme.colorScheme.primary)
+                            Switch(
+                                checked = autoSwitchToLogs,
+                                onCheckedChange = { enabled ->
+                                    scope.launch { settingsStore.saveAutoSwitchToLogs(enabled) }
+                                }
+                            )
                         }
-                    }
 
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            "Режим подключения",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            "Оба варианта — полноценный VPN (весь трафик через туннель), отличается только " +
-                                "транспортный протокол. WireGuard — основной, проверенный. Raw — без " +
-                                "WireGuard вообще, эксперимент, нужен сервер с -listen-raw. SOCKS5 — без " +
-                                "VPN-разрешения, прокси вручную.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            FilterChip(
-                                selected = connectionMode == SettingsStore.CONNECTION_MODE_VPN,
-                                onClick = {
-                                    if (!tunnelRunning) {
-                                        scope.launch { settingsStore.saveConnectionMode(SettingsStore.CONNECTION_MODE_VPN) }
+                            Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+                                Text(
+                                    "Схема подключения",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    "Показывать этапы DNS → VK → DTLS → VPN на вкладке «Логи»",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = connectionPipelineEnabled,
+                                onCheckedChange = { enabled ->
+                                    scope.launch {
+                                        settingsStore.saveConnectionPipelineEnabled(enabled)
+                                        if (!enabled) {
+                                            TunnelManager.hideConnectionPipelineForSettings()
+                                        }
                                     }
-                                },
-                                label = { Text("WG") },
-                                enabled = !tunnelRunning,
-                                modifier = Modifier.weight(1f)
-                            )
-                            FilterChip(
-                                selected = connectionMode == SettingsStore.CONNECTION_MODE_RAWTUN,
-                                onClick = {
-                                    if (!tunnelRunning) {
-                                        scope.launch { settingsStore.saveConnectionMode(SettingsStore.CONNECTION_MODE_RAWTUN) }
-                                    }
-                                },
-                                label = { Text("Raw") },
-                                enabled = !tunnelRunning,
-                                modifier = Modifier.weight(1f)
-                            )
-                            FilterChip(
-                                selected = connectionMode == SettingsStore.CONNECTION_MODE_SOCKS,
-                                onClick = {
-                                    if (!tunnelRunning) {
-                                        scope.launch { settingsStore.saveConnectionMode(SettingsStore.CONNECTION_MODE_SOCKS) }
-                                    }
-                                },
-                                label = { Text("SOCKS5") },
-                                enabled = !tunnelRunning,
-                                modifier = Modifier.weight(1f)
+                                }
                             )
                         }
-                        if (connectionMode == SettingsStore.CONNECTION_MODE_RAWTUN) {
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+                                Text(
+                                    "Отключать на Wi-Fi",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    "Автоматически отключать туннель при подключении к Wi-Fi (удобно для обхода БС только в мобильной сети)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = stopOnWifi,
+                                onCheckedChange = { enabled ->
+                                    scope.launch { settingsStore.saveStopOnWifi(enabled) }
+                                }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+                                Text(
+                                    "Автообновление обхода",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    "Каждые ${BypassRoutes.AUTO_REFRESH_INTERVAL_MS / 60_000} мин перерезолвить домены. Если IP сменились — кратко пересоберёт VPN (может рвать игру/звонки)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = bypassAutoRefresh,
+                                onCheckedChange = { enabled ->
+                                    scope.launch {
+                                        settingsStore.saveBypassAutoRefresh(enabled)
+                                        if (!enabled) {
+                                            BypassRoutes.stopAutoRefresh()
+                                        } else if (TunnelManager.running.first()) {
+                                            BypassRoutes.startAutoRefresh(TunnelManager.scope, context) {
+                                                TunnelManager.addNetworkLog(
+                                                    "[ОБХОД] IP доменов изменились — обновляю маршруты VPN"
+                                                )
+                                                TunnelManager.reloadWireGuard()
+                                            }
+                                        }
+                                    }
+                                }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        val subRefreshLabel = when (subscriptionAutoRefreshHours) {
+                            SettingsStore.SUB_AUTO_REFRESH_NEVER -> "Выкл"
+                            SettingsStore.SUB_AUTO_REFRESH_EVERY_OPEN -> "При каждом открытии"
+                            6 -> "Каждые 6 ч"
+                            24 -> "Каждые 24 ч"
+                            else -> "Каждые 12 ч"
+                        }
+                        Column(modifier = Modifier.fillMaxWidth()) {
                             Text(
-                                "Требует сервер, собранный с -listen-raw. Несовместим со старыми " +
-                                    "серверами — если Raw не подключается, используйте режим WG.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.error
+                                "Автообновление подписок",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
                             )
-                            OutlinedTextField(
-                                value = serverRawPortInput,
-                                onValueChange = { value ->
-                                    if (value.all { it.isDigit() } && value.length <= 5) {
-                                        serverRawPortInput = value
-                                        value.toIntOrNull()?.let { port ->
-                                            scope.launch { settingsStore.saveServerRawPort(port) }
-                                        }
+                            Text(
+                                "Подтягивать профили с сервера подписки при открытии приложения (когда туннель выключен)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            ExposedDropdownMenuBox(
+                                expanded = subAutoRefreshMenuExpanded,
+                                onExpandedChange = { subAutoRefreshMenuExpanded = !subAutoRefreshMenuExpanded }
+                            ) {
+                                OutlinedTextField(
+                                    value = subRefreshLabel,
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    modifier = Modifier
+                                        .menuAnchor()
+                                        .fillMaxWidth(),
+                                    label = { Text("Интервал") },
+                                    trailingIcon = {
+                                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = subAutoRefreshMenuExpanded)
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                )
+                                ExposedDropdownMenu(
+                                    expanded = subAutoRefreshMenuExpanded,
+                                    onDismissRequest = { subAutoRefreshMenuExpanded = false }
+                                ) {
+                                    listOf(
+                                        SettingsStore.SUB_AUTO_REFRESH_NEVER to "Выкл",
+                                        6 to "Каждые 6 ч",
+                                        SettingsStore.DEFAULT_SUB_AUTO_REFRESH_HOURS to "Каждые 12 ч",
+                                        24 to "Каждые 24 ч",
+                                        SettingsStore.SUB_AUTO_REFRESH_EVERY_OPEN to "При каждом открытии",
+                                    ).forEach { (hours, title) ->
+                                        DropdownMenuItem(
+                                            text = { Text(title) },
+                                            onClick = {
+                                                subAutoRefreshMenuExpanded = false
+                                                scope.launch {
+                                                    settingsStore.saveSubscriptionAutoRefreshHours(hours)
+                                                }
+                                            },
+                                            trailingIcon = {
+                                                if (subscriptionAutoRefreshHours == hours) {
+                                                    Icon(
+                                                        Icons.Default.CheckCircle,
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                            }
+                                        )
                                     }
-                                },
-                                label = { Text("Порт сервера (-listen-raw)") },
-                                singleLine = true,
-                                enabled = !tunnelRunning,
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(14.dp),
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+                                Text(
+                                    "Подробные логи",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    "Записывать больше диагностической информации (замедляет работу)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = detailedLogs,
+                                onCheckedChange = { enabled ->
+                                    scope.launch { settingsStore.saveDetailedLogs(enabled) }
+                                }
                             )
                         }
-                        if (connectionMode == SettingsStore.CONNECTION_MODE_SOCKS) {
-                            val socksAddr = SettingsStore.socksListenAddress(
-                                socksPortInput.toIntOrNull() ?: socksPort
-                            )
-                            OutlinedTextField(
-                                value = socksPortInput,
-                                onValueChange = { value ->
-                                    if (value.all { it.isDigit() } && value.length <= 5) {
-                                        socksPortInput = value
-                                        value.toIntOrNull()?.let { port ->
-                                            scope.launch { settingsStore.saveSocksPort(port) }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+                                Text(
+                                    "Проверять обновления",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    "Автоматически проверять наличие обновлений при открытии приложения",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = updateCheckIntervalHours != com.wdtt.client.UPDATE_CHECK_NEVER,
+                                onCheckedChange = { enabled ->
+                                    scope.launch {
+                                        val newInterval = if (enabled) {
+                                            com.wdtt.client.DEFAULT_UPDATE_CHECK_INTERVAL_HOURS
+                                        } else {
+                                            com.wdtt.client.UPDATE_CHECK_NEVER
                                         }
+                                        settingsStore.saveUpdateCheckIntervalHours(newInterval)
                                     }
-                                },
-                                label = { Text("Порт SOCKS5") },
-                                singleLine = true,
-                                enabled = !tunnelRunning,
+                                }
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+                                Text(
+                                    "Бета-обновления",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    "Показывать pre-release сборки с GitHub (v*-beta)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = includeBetaUpdates,
+                                onCheckedChange = { enabled ->
+                                    scope.launch { settingsStore.saveIncludeBetaUpdates(enabled) }
+                                }
+                            )
+                        }
+
+                        val notificationsEnabled = NotificationHelper.areNotificationsEnabled(context)
+                        if (!notificationsEnabled) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.55f),
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(14.dp),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(
+                                        "Уведомления отключены",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                    )
+                                    Text(
+                                        "Без них не видно статус туннеля, капчу и вход VK. На Xiaomi/Samsung включите уведомления для RTpTUN вручную.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                    )
+                                    OutlinedButton(
+                                        onClick = {
+                                            (context as? com.wdtt.client.MainActivity)?.let { activity ->
+                                                if (Build.VERSION.SDK_INT >= 33 &&
+                                                    !NotificationHelper.hasPostNotificationsPermission(context)
+                                                ) {
+                                                    activity.requestNotificationPermissionIfNeeded()
+                                                } else {
+                                                    activity.openNotificationSettings()
+                                                }
+                                            } ?: NotificationHelper.openAppNotificationSettings(context)
+                                        },
+                                        shape = RoundedCornerShape(10.dp),
+                                    ) {
+                                        Text("Включить уведомления")
+                                    }
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                        // ═══ Раздел: Интерфейс ═══
+                        Text(
+                            "Интерфейс",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                "Режим приложения",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                "В режиме пользователя вкладка «Серверы» скрыта.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        "Авторизация SOCKS5",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Medium,
-                                    )
-                                    Text(
-                                        "Требовать логин и пароль от прокси-клиента",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                ProtocolChip(
+                                    label = "Пользователь",
+                                    selected = interfaceRole == "user",
+                                    enabled = true,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    scope.launch { settingsStore.saveInterfaceRole("user") }
+                                }
+                                ProtocolChip(
+                                    label = "Админ",
+                                    selected = interfaceRole == "admin",
+                                    enabled = true,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    scope.launch { settingsStore.saveInterfaceRole("admin") }
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                        // ═══ Раздел: Сеть ═══
+                        Text(
+                            "Сеть",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        GoDnsSettingsSection(
+                            goDnsPreset = goDnsPreset,
+                            goDnsCustomInput = goDnsCustomInput,
+                            goDnsDohCustomInput = goDnsDohCustomInput,
+                            tunnelRunning = tunnelRunning,
+                            onPresetChange = { preset ->
+                                scope.launch {
+                                    settingsStore.saveGoDns(
+                                        preset = preset,
+                                        custom = goDnsCustomInput,
+                                        dohCustom = goDnsDohCustomInput,
                                     )
                                 }
-                                Switch(
-                                    checked = socksAuthEnabled,
-                                    onCheckedChange = { enabled ->
-                                        scope.launch {
-                                            settingsStore.saveSocksAuthEnabled(enabled)
-                                        }
-                                    },
-                                    enabled = !tunnelRunning,
+                            },
+                            onCustomChange = { value ->
+                                goDnsCustomInput = value
+                                scope.launch {
+                                    settingsStore.saveGoDns(
+                                        preset = goDnsPreset,
+                                        custom = goDnsCustomInput,
+                                        dohCustom = goDnsDohCustomInput,
+                                    )
+                                }
+                            },
+                            onDohCustomChange = { value ->
+                                goDnsDohCustomInput = value
+                                scope.launch {
+                                    settingsStore.saveGoDns(
+                                        preset = goDnsPreset,
+                                        custom = goDnsCustomInput,
+                                        dohCustom = goDnsDohCustomInput,
+                                    )
+                                }
+                            },
+                        )
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                        // ═══ Раздел: SOCKS5 Прокси ═══
+                        Text(
+                            "Настройки SOCKS5 Прокси",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        OutlinedTextField(
+                            value = socksPortInput,
+                            onValueChange = { value ->
+                                if (value.all { it.isDigit() } && value.length <= 5) {
+                                    socksPortInput = value
+                                    value.toIntOrNull()?.let { port ->
+                                        scope.launch { settingsStore.saveSocksPort(port) }
+                                    }
+                                }
+                            },
+                            label = { Text("Порт SOCKS5 прокси") },
+                            singleLine = true,
+                            enabled = !tunnelRunning,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+                                Text(
+                                    "Авторизация SOCKS5",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                Text(
+                                    "Требовать логин и пароль от клиентов",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                            AnimatedVisibility(visible = socksAuthEnabled) {
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedTextField(
-                                        value = socksUsernameInput,
-                                        onValueChange = { value ->
-                                            if (value.toByteArray().size <= 255) {
-                                                socksUsernameInput = value
-                                                scope.launch {
-                                                    settingsStore.saveSocksUsername(value)
-                                                }
-                                            }
-                                        },
-                                        label = { Text("Логин SOCKS5") },
-                                        singleLine = true,
-                                        enabled = !tunnelRunning,
-                                        isError = socksUsernameInput.isBlank(),
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(14.dp),
-                                    )
-                                    OutlinedTextField(
-                                        value = socksPasswordInput,
-                                        onValueChange = { value ->
-                                            if (value.toByteArray().size <= 255) {
-                                                socksPasswordInput = value
-                                                scope.launch {
-                                                    settingsStore.saveSocksPassword(value)
-                                                }
-                                            }
-                                        },
-                                        label = { Text("Пароль SOCKS5") },
-                                        singleLine = true,
-                                        enabled = !tunnelRunning,
-                                        isError = socksPasswordInput.isBlank(),
-                                        visualTransformation = PasswordVisualTransformation(),
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(14.dp),
-                                    )
-                                    if (!socksAuthValid) {
-                                        Text(
-                                            "Для запуска SOCKS5 заполните логин и пароль",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.error,
-                                        )
-                                    }
-                                }
-                            }
-                            Surface(
-                                onClick = {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("socks", socksAddr))
-                                    Toast.makeText(context, "Скопировано: $socksAddr", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(14.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
-                                border = BorderStroke(
-                                    1.dp,
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
-                                ),
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            "Адрес прокси",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                        Text(
-                                            socksAddr,
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontFamily = FontFamily.Monospace,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                        )
-                                    }
-                                    Icon(
-                                        imageVector = Icons.Default.ContentCopy,
-                                        contentDescription = "Копировать",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                }
-                            }
-                        }
-                        if (tunnelRunning) {
-                            Text(
-                                "Смена режима — после отключения туннеля",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    // Применимо ко всем режимам — меняет только транспорт до
-                    // TURN-relay (TCP или UDP), сама TURN/RTP-obfs логика не
-                    // меняется. TCP по умолчанию.
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            "TURN-транспорт",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FilterChip(
-                                selected = turnTcpEnabled,
-                                onClick = {
-                                    if (!tunnelRunning) {
-                                        scope.launch { settingsStore.saveTurnTcpEnabled(true) }
+                            Switch(
+                                checked = socksAuthEnabled,
+                                onCheckedChange = { enabled ->
+                                    scope.launch {
+                                        settingsStore.saveSocksAuthEnabled(enabled)
                                     }
                                 },
-                                label = { Text("TCP") },
                                 enabled = !tunnelRunning,
-                                modifier = Modifier.weight(1f)
-                            )
-                            FilterChip(
-                                selected = !turnTcpEnabled,
-                                onClick = {
-                                    if (!tunnelRunning) {
-                                        scope.launch { settingsStore.saveTurnTcpEnabled(false) }
-                                    }
-                                },
-                                label = { Text("UDP") },
-                                enabled = !tunnelRunning,
-                                modifier = Modifier.weight(1f)
                             )
                         }
-                    }
 
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            "Маскировка трафика",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            "RTP-пакеты под аудио (OPUS) или видео (H.264) звонок VK.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            listOf("audio" to "Аудио", "video" to "Видео").forEach { (mode, label) ->
-                                FilterChip(
-                                    selected = obfsMode == mode,
-                                    onClick = {
-                                        if (!tunnelRunning) {
-                                            scope.launch { settingsStore.saveObfsMode(mode) }
+                        AnimatedVisibility(visible = true) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = socksUsernameInput,
+                                    onValueChange = { value ->
+                                        if (value.toByteArray().size <= 255) {
+                                            socksUsernameInput = value
+                                            scope.launch {
+                                                settingsStore.saveSocksUsername(value)
+                                            }
                                         }
                                     },
-                                    label = { Text(label) },
+                                    label = { Text("Логин SOCKS5 (юзер)") },
+                                    singleLine = true,
+                                    enabled = !tunnelRunning && socksAuthEnabled,
+                                    isError = socksAuthEnabled && socksUsernameInput.isBlank(),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                )
+                                OutlinedTextField(
+                                    value = socksPasswordInput,
+                                    onValueChange = { value ->
+                                        if (value.toByteArray().size <= 255) {
+                                            socksPasswordInput = value
+                                            scope.launch {
+                                                settingsStore.saveSocksPassword(value)
+                                            }
+                                        }
+                                    },
+                                    label = { Text("Пароль SOCKS5") },
+                                    singleLine = true,
+                                    enabled = !tunnelRunning && socksAuthEnabled,
+                                    isError = socksAuthEnabled && socksPasswordInput.isBlank(),
+                                    visualTransformation = PasswordVisualTransformation(),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                )
+                                if (!socksAuthValid) {
+                                    Text(
+                                        "Заполните логин и пароль SOCKS5",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+                            }
+                        }
+
+                        Surface(
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val socksAddr = SettingsStore.socksListenAddress(socksPortInput.toIntOrNull() ?: socksPort)
+                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("socks", socksAddr))
+                                Toast.makeText(context, "Скопировано: $socksAddr", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Прокси-адрес", style = MaterialTheme.typography.labelMedium)
+                                    Text(
+                                        SettingsStore.socksListenAddress(socksPortInput.toIntOrNull() ?: socksPort),
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                }
+                                Icon(Icons.Filled.ContentCopy, contentDescription = "Скопировать", tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                "Режим подключения",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                "Оба варианта — полноценный VPN (весь трафик через туннель), отличается только " +
+                                        "транспортный протокол. WireGuard — основной, проверенный. Raw — без " +
+                                        "WireGuard вообще, эксперимент, нужен сервер с -listen-raw. SOCKS5 — без " +
+                                        "VPN-разрешения, прокси вручную.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilterChip(
+                                    selected = connectionMode == SettingsStore.CONNECTION_MODE_VPN,
+                                    onClick = {
+                                        if (!tunnelRunning) {
+                                            scope.launch { settingsStore.saveConnectionMode(SettingsStore.CONNECTION_MODE_VPN) }
+                                        }
+                                    },
+                                    label = { Text("WG") },
+                                    enabled = !tunnelRunning,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                FilterChip(
+                                    selected = connectionMode == SettingsStore.CONNECTION_MODE_RAWTUN,
+                                    onClick = {
+                                        if (!tunnelRunning) {
+                                            scope.launch { settingsStore.saveConnectionMode(SettingsStore.CONNECTION_MODE_RAWTUN) }
+                                        }
+                                    },
+                                    label = { Text("Raw") },
+                                    enabled = !tunnelRunning,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                FilterChip(
+                                    selected = connectionMode == SettingsStore.CONNECTION_MODE_SOCKS,
+                                    onClick = {
+                                        if (!tunnelRunning) {
+                                            scope.launch { settingsStore.saveConnectionMode(SettingsStore.CONNECTION_MODE_SOCKS) }
+                                        }
+                                    },
+                                    label = { Text("SOCKS5") },
+                                    enabled = !tunnelRunning,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (connectionMode == SettingsStore.CONNECTION_MODE_RAWTUN) {
+                                Text(
+                                    "Требует сервер, собранный с -listen-raw. Несовместим со старыми " +
+                                            "серверами — если Raw не подключается, используйте режим WG.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                OutlinedTextField(
+                                    value = serverRawPortInput,
+                                    onValueChange = { value ->
+                                        if (value.all { it.isDigit() } && value.length <= 5) {
+                                            serverRawPortInput = value
+                                            value.toIntOrNull()?.let { port ->
+                                                scope.launch { settingsStore.saveServerRawPort(port) }
+                                            }
+                                        }
+                                    },
+                                    label = { Text("Порт сервера (-listen-raw)") },
+                                    singleLine = true,
+                                    enabled = !tunnelRunning,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                )
+                            }
+                            if (tunnelRunning) {
+                                Text(
+                                    "Смена режима — после отключения туннеля",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        // Применимо ко всем режимам — меняет только транспорт до
+                        // TURN-relay (TCP или UDP), сама TURN/RTP-obfs логика не
+                        // меняется. TCP по умолчанию.
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                "TURN-транспорт",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilterChip(
+                                    selected = turnTcpEnabled,
+                                    onClick = {
+                                        if (!tunnelRunning) {
+                                            scope.launch { settingsStore.saveTurnTcpEnabled(true) }
+                                        }
+                                    },
+                                    label = { Text("TCP") },
+                                    enabled = !tunnelRunning,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                FilterChip(
+                                    selected = !turnTcpEnabled,
+                                    onClick = {
+                                        if (!tunnelRunning) {
+                                            scope.launch { settingsStore.saveTurnTcpEnabled(false) }
+                                        }
+                                    },
+                                    label = { Text("UDP") },
                                     enabled = !tunnelRunning,
                                     modifier = Modifier.weight(1f)
                                 )
                             }
                         }
-                        if (tunnelRunning) {
+
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
-                                "Смена режима — после отключения туннеля",
-                                style = MaterialTheme.typography.labelSmall,
+                                "Маскировка трафика",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                "RTP-пакеты под аудио (OPUS) или видео (H.264) звонок VK.",
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        }
-                    }
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                    // ═══ Раздел: О приложении ═══
-                    Text(
-                        "О приложении",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    val currentVersion = remember { "v${com.wdtt.client.BuildConfig.VERSION_NAME.removePrefix("v")}" }
-                    var isCheckingUpdates by remember { mutableStateOf(false) }
-                    val updateLatestVersion by settingsStore.updateLatestVersion.collectAsStateWithLifecycle(initialValue = "")
-                    val updateLastError by settingsStore.updateLastError.collectAsStateWithLifecycle(initialValue = "")
-
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf("audio" to "Аудио", "video" to "Видео").forEach { (mode, label) ->
+                                    FilterChip(
+                                        selected = obfsMode == mode,
+                                        onClick = {
+                                            if (!tunnelRunning) {
+                                                scope.launch { settingsStore.saveObfsMode(mode) }
+                                            }
+                                        },
+                                        label = { Text(label) },
+                                        enabled = !tunnelRunning,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                            if (tunnelRunning) {
                                 Text(
-                                    text = "RTpTUN",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Версия $currentVersion",
-                                    style = MaterialTheme.typography.bodySmall,
+                                    "Смена режима — после отключения туннеля",
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                        Text(
+                            "О проекте RTpTUN",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        val currentVersion = remember { "v${com.rtptun.client.BuildConfig.VERSION_NAME.removePrefix("v")}" }
+                        var isCheckingUpdates by remember { mutableStateOf(false) }
+                        val updateLatestVersion by settingsStore.updateLatestVersion.collectAsStateWithLifecycle(initialValue = "")
+                        val updateLastError by settingsStore.updateLastError.collectAsStateWithLifecycle(initialValue = "")
+
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
+                                Column {
+                                    Text(
+                                        text = "RTpTUN",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Версия $currentVersion",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/darkbitVPN"))
+                                            context.startActivity(intent)
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text("Telegram", style = MaterialTheme.typography.labelMedium)
+                                    }
+                                }
+                            }
+
+                            Text(
+                                text = "Проект распространяется по лицензии GNU GPL v3.\n\n" +
+                                        "• Автор оригинальной базы WDTT: amurcanov (github.com/amurcanov/proxy-turn-vk-android)\n" +
+                                        "• Разработка и форк qWDTT: SpaceNeuroX (github.com/SpaceNeuroX/proxy-turn-vk-android)\n\n" +
+                                        "В качестве технической основы использовались исходники оригинального проекта WDTT.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+
+
+                            // Проверка обновлений
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                val updateStatusText = remember(isCheckingUpdates, updateLatestVersion, updateLastError) {
+                                    when {
+                                        isCheckingUpdates -> "Проверяем..."
+                                        updateLatestVersion.isNotBlank() && isNewerVersion(currentVersion, updateLatestVersion, includeBetaUpdates) -> "Доступна $updateLatestVersion!"
+                                        updateLatestVersion.isNotBlank() -> "Обновлений нет"
+                                        updateLastError.isNotBlank() -> "Ошибка"
+                                        else -> "Не проверено"
+                                    }
+                                }
+
+                                Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+                                    Text(
+                                        "Обновления",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = updateStatusText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (updateLatestVersion.isNotBlank() && isNewerVersion(currentVersion, updateLatestVersion, includeBetaUpdates)) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+                                    )
+                                }
+
                                 Button(
                                     onClick = {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/darkbitVPN"))
-                                        context.startActivity(intent)
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                    ),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text("Telegram", style = MaterialTheme.typography.labelMedium)
-                                }
-
-                                OutlinedButton(
-                                    onClick = {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/SpaceNeuroX/proxy-turn-vk-android"))
-                                        context.startActivity(intent)
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text("GitHub", style = MaterialTheme.typography.labelMedium)
-                                }
-                            }
-                        }
-
-                        Text(
-                            text = "Проект распространяется по лицензии GNU GPL v3.\n\n" +
-                                   "• Автор оригинальной базы WDTT: amurcanov (github.com/amurcanov/proxy-turn-vk-android)\n" +
-                                   "• Разработка и форк qWDTT: SpaceNeuroX (github.com/SpaceNeuroX/proxy-turn-vk-android)\n\n" +
-                                   "В качестве технической основы использовались исходники оригинального проекта WDTT.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        OutlinedButton(
-                            onClick = {
-                                val intent = Intent(
-                                    Intent.ACTION_VIEW,
-                                    Uri.parse("https://pay.cloudtips.ru/p/64a6c43c")
-                                )
-                                context.startActivity(intent)
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Favorite,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                "Поблагодарить разработчика",
-                                style = MaterialTheme.typography.labelLarge,
-                            )
-                        }
-                        Text(
-                            text = "Если приложение помогает — можно оставить чаевые через CloudTips.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-
-
-                        // Проверка обновлений
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            val updateStatusText = remember(isCheckingUpdates, updateLatestVersion, updateLastError) {
-                                when {
-                                    isCheckingUpdates -> "Проверяем..."
-                                    updateLatestVersion.isNotBlank() && isNewerVersion(currentVersion, updateLatestVersion, includeBetaUpdates) -> "Доступна $updateLatestVersion!"
-                                    updateLatestVersion.isNotBlank() -> "Обновлений нет"
-                                    updateLastError.isNotBlank() -> "Ошибка"
-                                    else -> "Не проверено"
-                                }
-                            }
-                            
-                            Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-                                Text(
-                                    "Обновления",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Text(
-                                    text = updateStatusText,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (updateLatestVersion.isNotBlank() && isNewerVersion(currentVersion, updateLatestVersion, includeBetaUpdates)) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
-                                )
-                            }
-
-                            Button(
-                                onClick = {
-                                    scope.launch {
-                                        isCheckingUpdates = true
-                                        try {
-                                            val release = com.wdtt.client.fetchLatestReleaseInfo(
-                                                currentVersion,
-                                                includeBetaUpdates,
-                                            )
-                                            if (release != null) {
-                                                settingsStore.saveUpdateState(
-                                                    lastCheckAt = System.currentTimeMillis(),
-                                                    latestVersion = release.versionTag,
-                                                    error = ""
+                                        scope.launch {
+                                            isCheckingUpdates = true
+                                            try {
+                                                val release = com.wdtt.client.fetchLatestReleaseInfo(
+                                                    currentVersion,
+                                                    includeBetaUpdates,
                                                 )
-                                                if (isNewerVersion(currentVersion, release.versionTag, includeBetaUpdates)) {
-                                                    Toast.makeText(context, "Доступна новая версия: ${release.versionTag}", Toast.LENGTH_LONG).show()
+                                                if (release != null) {
+                                                    settingsStore.saveUpdateState(
+                                                        lastCheckAt = System.currentTimeMillis(),
+                                                        latestVersion = release.versionTag,
+                                                        error = ""
+                                                    )
+                                                    if (isNewerVersion(currentVersion, release.versionTag, includeBetaUpdates)) {
+                                                        Toast.makeText(context, "Доступна новая версия: ${release.versionTag}", Toast.LENGTH_LONG).show()
+                                                    } else {
+                                                        Toast.makeText(context, "У вас последняя версия!", Toast.LENGTH_SHORT).show()
+                                                    }
                                                 } else {
-                                                    Toast.makeText(context, "У вас последняя версия!", Toast.LENGTH_SHORT).show()
+                                                    settingsStore.saveUpdateState(
+                                                        lastCheckAt = System.currentTimeMillis(),
+                                                        latestVersion = "",
+                                                        error = "Ошибка"
+                                                    )
+                                                    Toast.makeText(context, "Не удалось проверить обновления", Toast.LENGTH_SHORT).show()
                                                 }
-                                            } else {
-                                                settingsStore.saveUpdateState(
-                                                    lastCheckAt = System.currentTimeMillis(),
-                                                    latestVersion = "",
-                                                    error = "Ошибка"
-                                                )
-                                                Toast.makeText(context, "Не удалось проверить обновления", Toast.LENGTH_SHORT).show()
+                                            } catch (e: java.lang.Exception) {
+                                                Toast.makeText(context, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            } finally {
+                                                isCheckingUpdates = false
                                             }
-                                        } catch (e: java.lang.Exception) {
-                                            Toast.makeText(context, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
-                                        } finally {
-                                            isCheckingUpdates = false
                                         }
-                                    }
-                                },
-                                enabled = !isCheckingUpdates,
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text("Проверить", style = MaterialTheme.typography.labelMedium)
+                                    },
+                                    enabled = !isCheckingUpdates,
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text("Проверить", style = MaterialTheme.typography.labelMedium)
+                                }
                             }
-                        }
 
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
-                        // Копия отчета
-                        OutlinedButton(
-                            onClick = {
-                                val reportText = """
+                            // Копия отчета
+                            OutlinedButton(
+                                onClick = {
+                                    val reportText = """
                                     Приложение: RTpTUN
                                     Версия: $currentVersion
                                     Android API: ${Build.VERSION.SDK_INT}
                                     Архитектура (ABI): ${Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"}
                                     Устройство: ${Build.MANUFACTURER} ${Build.MODEL}
                                 """.trimIndent()
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                clipboard.setPrimaryClip(ClipData.newPlainText("RTpTUN Report", reportText))
-                                Toast.makeText(context, "Отчёт о системе скопирован!", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("Скопировать системный отчёт")
-                        }
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("RTpTUN Report", reportText))
+                                    Toast.makeText(context, "Отчёт о системе скопирован!", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Скопировать системный отчёт")
+                            }
 
-                        Spacer(Modifier.height(12.dp))
-                    }
+                            Spacer(Modifier.height(12.dp))
+                        }
                     }
                     Spacer(Modifier.height(16.dp))
                     Button(
@@ -1909,7 +1708,7 @@ fun SettingsTabContent(
                     .clip(RoundedCornerShape(8.dp))
                     .clickable { showAboutDialog = true }
             )
-            
+
             // Иконка настроек (шестеренка)
             IconButton(
                 onClick = { onOpenSettings() }
@@ -2097,9 +1896,9 @@ fun SettingsTabContent(
                 connectCancelArmed = connectCancelArmed,
                 cooldownSeconds = cooldownSeconds,
                 enabled = (isValid && cooldownSeconds == 0 && !tunnelConnecting && !tunnelReconnecting) ||
-                    tunnelRunning ||
-                    tunnelReconnecting ||
-                    (tunnelConnecting && connectCancelArmed),
+                        tunnelRunning ||
+                        tunnelReconnecting ||
+                        (tunnelConnecting && connectCancelArmed),
                 onClick = {
                     when {
                         tunnelRunning || tunnelReconnecting || (tunnelConnecting && connectCancelArmed) -> {
@@ -2455,9 +2254,9 @@ fun HashesDialog(
         it.status in setOf("dead", "error", "network", "limited", "captcha")
     }
     val tunnelBusy by TunnelManager.running.collectAsStateWithLifecycle()
-    val vkLoggedIn = remember { mutableStateOf(VkAuthWebViewManager.hasVkSessionCookie()) }
+    val vkLoggedIn = remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        vkLoggedIn.value = VkAuthWebViewManager.hasVkSessionCookie()
+        vkLoggedIn.value = withContext(Dispatchers.IO) { VkAuthWebViewManager.hasVkSessionCookie() }
     }
     val progress = if (checkableHashes.isEmpty()) {
         0f

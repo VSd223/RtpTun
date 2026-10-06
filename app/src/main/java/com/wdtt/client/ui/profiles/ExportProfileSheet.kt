@@ -1,3 +1,8 @@
+// ##################################################
+// FILE: ExportProfileSheet.kt
+// FULL PATH: app/src/main/java/com/wdtt/client/ui/profiles/ExportProfileSheet.kt
+// ##################################################
+
 package com.wdtt.client.ui
 
 import android.content.ClipData
@@ -25,7 +30,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.zxing.BarcodeFormat
@@ -50,12 +54,12 @@ fun ExportProfileSheet(
     val scope = rememberCoroutineScope()
     var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var selectedFormatIndex by remember { mutableIntStateOf(0) }
+    val isProtected = profile.isReadOnly || profile.groupId.isNotBlank()
 
-    val formats = remember(profile, serverDtlsPort) {
+    val formats = remember(profile, serverDtlsPort, isProtected) {
         val cipherBlob = ConfigCipher.encryptProfileToBlob(profile)
 
-        if (profile.isReadOnly || profile.groupId.isNotBlank()) {
-            // Зашифрованные профили экспортируются ТОЛЬКО в зашифрованном виде (XOR Cipher Blob)
+        if (isProtected) {
             listOf(
                 "🔒 Зашифрованный XOR ключ" to cipherBlob
             )
@@ -71,7 +75,7 @@ fun ExportProfileSheet(
                 "ptvb://" to "ptvb://config?$baseQuery",
                 "wdtt://" to "wdtt://config?$baseQuery",
                 "qwdtt://" to "qwdtt://config?$baseQuery",
-                "XOR Blob" to cipherBlob
+                "🔒 XOR Blob" to cipherBlob
             )
         }
     }
@@ -91,6 +95,10 @@ fun ExportProfileSheet(
         contract = ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
         if (uri != null) {
+            if (isProtected) {
+                Toast.makeText(context, "🔒 Экспорт открытого конфига заблокирован автором", Toast.LENGTH_LONG).show()
+                return@rememberLauncherForActivityResult
+            }
             try {
                 val json = """
                     {
@@ -125,20 +133,19 @@ fun ExportProfileSheet(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                "Экспорт профиля",
+                text = if (isProtected) "🔒 Экспорт защищённого профиля" else "Экспорт профиля",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                profile.name,
+                text = profile.name,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Формат выбор схемы
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -211,8 +218,8 @@ fun ExportProfileSheet(
                     Button(
                         onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("RTpTUN Profile", activeLink))
-                            Toast.makeText(context, "Ссылка (${formats[selectedFormatIndex].first}) скопирована", Toast.LENGTH_SHORT).show()
+                            clipboard.setPrimaryClip(ClipData.newPlainText("Profile Link", activeLink))
+                            Toast.makeText(context, "Зашифрованный ключ скопирован", Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.weight(1f).height(48.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
@@ -220,42 +227,46 @@ fun ExportProfileSheet(
                     ) {
                         Icon(Icons.Default.ContentCopy, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Скопировать (${formats[selectedFormatIndex].first})", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Скопировать ключ", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    Button(
-                        onClick = {
-                            createDocumentLauncher.launch("${profile.name}.conf")
-                        },
-                        modifier = Modifier.height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Icon(Icons.Default.Save, null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("В файл", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    if (!isProtected) {
+                        Button(
+                            onClick = {
+                                createDocumentLauncher.launch("${profile.name}.conf")
+                            },
+                            modifier = Modifier.height(48.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(Icons.Default.Save, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("В файл", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
 
-                Button(
-                    onClick = {
-                        val allText = buildString {
-                            appendLine("=== Профиль: ${profile.name} ===")
-                            formats.forEach { (title, valLink) ->
-                                appendLine("• $title: $valLink")
-                            }
-                        }.trim()
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("Profile Links", allText))
-                        Toast.makeText(context, "Все варианты ссылок скопированы!", Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                ) {
-                    Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Скопировать ВСЕ варианты ссылок", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                if (!isProtected) {
+                    Button(
+                        onClick = {
+                            val allText = buildString {
+                                appendLine("=== Профиль: ${profile.name} ===")
+                                formats.forEach { (title, valLink) ->
+                                    appendLine("• $title: $valLink")
+                                }
+                            }.trim()
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("Profile Links", allText))
+                            Toast.makeText(context, "Все варианты ссылок скопированы!", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                    ) {
+                        Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Скопировать ВСЕ варианты ссылок", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

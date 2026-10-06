@@ -1,3 +1,8 @@
+// ################################################## 
+// FILE: ProfilesStore.kt 
+// FULL PATH: app/src/main/java/com/wdtt/client/profiles/ProfilesStore.kt 
+// ################################################## 
+
 package com.wdtt.client
 
 import android.content.Context
@@ -88,6 +93,10 @@ class ProfilesStore(context: Context) {
     private val dataStore = appContext.dataStore
     private val secureStore = SecureStringStore(appContext)
 
+    suspend fun preload() = withContext(Dispatchers.IO) {
+        dataStore.data.first()
+    }
+
     val profiles: Flow<List<ConnectionProfile>> = dataStore.data
         .catch { emit(emptyPreferences()) }
         .map { prefs ->
@@ -106,7 +115,8 @@ class ProfilesStore(context: Context) {
                 val traffic = prefs[trafficKey(id)] ?: 0.0
                 val groupId = prefs[groupIdKey(id)] ?: ""
                 val useGlobal = prefs[useGlobalHashesKey(id)] ?: true
-                list.add(ConnectionProfile(id, name, peer, hashes, workers, port, pass, traffic, groupId, useGlobal))
+                val isReadOnly = prefs[isReadOnlyKey(id)] ?: (groupId.isNotBlank())
+                list.add(ConnectionProfile(id, name, peer, hashes, workers, port, pass, traffic, groupId, useGlobal, isReadOnly))
             }
             list
         }.flowOn(Dispatchers.IO)
@@ -123,7 +133,7 @@ class ProfilesStore(context: Context) {
                 list.add(ProfileGroup(id, name))
             }
             list
-        }
+        }.flowOn(Dispatchers.IO)
 
     val subscriptions: Flow<List<ProfileSubscription>> = dataStore.data
         .catch { emit(emptyPreferences()) }
@@ -146,8 +156,8 @@ class ProfilesStore(context: Context) {
                     lastSyncAt = prefs[subLastSyncKey(id)] ?: 0L,
                     lastSyncError = prefs[subLastErrorKey(id)] ?: ""
                 )
-        }
-    }
+            }
+        }.flowOn(Dispatchers.IO)
 
     suspend fun saveSubscription(sub: ProfileSubscription) = withContext(Dispatchers.IO) {
         dataStore.edit { prefs ->
@@ -289,10 +299,6 @@ class ProfilesStore(context: Context) {
         val skippedFresh: Int,
     )
 
-    /**
-     * Тихое автообновление: только «устаревшие» по интервалу, либо все при [SettingsStore.SUB_AUTO_REFRESH_EVERY_OPEN].
-     * Не трогает свежие подписки. Вызывать когда туннель не запущен.
-     */
     suspend fun autoRefreshSubscriptionsIfDue(intervalHours: Int): SubscriptionAutoRefreshResult =
         withContext(Dispatchers.IO) {
             if (intervalHours == SettingsStore.SUB_AUTO_REFRESH_NEVER) {
@@ -362,6 +368,7 @@ class ProfilesStore(context: Context) {
             prefs[trafficKey(profile.id)] = profile.trafficMb
             prefs[groupIdKey(profile.id)] = profile.groupId
             prefs[useGlobalHashesKey(profile.id)] = profile.useGlobalHashes
+            prefs[isReadOnlyKey(profile.id)] = profile.isReadOnly
         }
     }
 
@@ -388,6 +395,7 @@ class ProfilesStore(context: Context) {
             prefs.remove(portKey(id))
             prefs.remove(passKey(id))
             prefs.remove(useGlobalHashesKey(id))
+            prefs.remove(isReadOnlyKey(id))
             prefs.remove(trafficKey(id))
             prefs.remove(groupIdKey(id))
         }
@@ -410,7 +418,6 @@ class ProfilesStore(context: Context) {
         }
     }
 
-    /** Существующая папка с тем же именем: профили в ней удаляются, затем импортируются новые. */
     suspend fun resolveGroupIdForImport(groupName: String, fromSubscription: Boolean = false): String = withContext(Dispatchers.IO) {
         val trimmed = groupName.trim()
         if (trimmed.isEmpty()) return@withContext ""
@@ -426,7 +433,7 @@ class ProfilesStore(context: Context) {
     suspend fun importProfilesToGroup(groupName: String, profiles: List<ConnectionProfile>, fromSubscription: Boolean = false) = withContext(Dispatchers.IO) {
         val groupId = resolveGroupIdForImport(groupName, fromSubscription)
         for (p in profiles) {
-            saveProfile(p.copy(id = UUID.randomUUID().toString(), groupId = groupId), fromSubscriptionSync = fromSubscription)
+            saveProfile(p.copy(id = UUID.randomUUID().toString(), groupId = groupId, isReadOnly = true), fromSubscriptionSync = fromSubscription)
         }
     }
 
@@ -461,7 +468,8 @@ class ProfilesStore(context: Context) {
         val traffic = prefs[trafficKey(id)] ?: 0.0
         val groupId = prefs[groupIdKey(id)] ?: ""
         val useGlobal = prefs[useGlobalHashesKey(id)] ?: hashes.isBlank()
-        return ConnectionProfile(id, name, peer, hashes, workers, port, pass, traffic, groupId, useGlobal)
+        val isReadOnly = prefs[isReadOnlyKey(id)] ?: (groupId.isNotBlank())
+        return ConnectionProfile(id, name, peer, hashes, workers, port, pass, traffic, groupId, useGlobal, isReadOnly)
     }
 
     suspend fun incrementProfileTraffic(id: String, additionalTrafficMb: Double) = withContext(Dispatchers.IO) {
@@ -477,7 +485,7 @@ class ProfilesStore(context: Context) {
         dataStore.edit { prefs ->
             val actualIdsRaw = prefs[stringPreferencesKey("profiles_ids")] ?: ""
             val actualIds = actualIdsRaw.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
-            
+
             val subsetIndices = actualIds.mapIndexedNotNull { index, id -> if (newOrderForSubset.contains(id)) index else null }.sorted()
             if (subsetIndices.size == newOrderForSubset.size) {
                 for (i in subsetIndices.indices) {
@@ -490,10 +498,8 @@ class ProfilesStore(context: Context) {
         }
     }
 
-    // Apply profile: save to SettingsStore
     suspend fun applyProfile(context: Context, id: String) {
         val p = getProfileOnce(id) ?: return
-        // save to settings
         val finalHashes = if (p.useGlobalHashes) {
             val global = settings.globalVkHashes.first()
             global.ifEmpty { p.vkHashes }

@@ -42,7 +42,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.wdtt.client.ConnectionPipelineCard
 import com.wdtt.client.LogEntry
 import com.wdtt.client.TunnelManager
-import com.wdtt.client.WDTTColors
+import com.wdtt.client.RTpTUNColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -103,7 +103,7 @@ fun LogsTab() {
     }
 
     val isDark = isSystemInDarkTheme()
-    val terminalBg = if (isDark) WDTTColors.terminalBgDark else WDTTColors.terminalBg
+    val terminalBg = if (isDark) RTpTUNColors.terminalBgDark else RTpTUNColors.terminalBg
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         // ═══ Верхняя панель заголовка ═══
@@ -235,7 +235,7 @@ fun LogsTab() {
             Column(modifier = Modifier.fillMaxSize()) {
                 if (pinnedStatsMessage != null || uptimeText != null) {
                     Surface(
-                        color = WDTTColors.terminalBlue.copy(alpha = if (isDark) 0.18f else 0.12f),
+                        color = RTpTUNColors.terminalBlue.copy(alpha = if (isDark) 0.18f else 0.12f),
                         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -251,7 +251,7 @@ fun LogsTab() {
                                     text = pinnedStatsMessage
                                         .removePrefix("[СТАТИСТИКА] ")
                                         .removePrefix("[СТАТИСТИКА]"),
-                                    color = WDTTColors.terminalBlue,
+                                    color = RTpTUNColors.terminalBlue,
                                     fontSize = 12.sp,
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.SemiBold,
@@ -273,12 +273,12 @@ fun LogsTab() {
                                     Icon(
                                         Icons.Default.Timer,
                                         contentDescription = null,
-                                        tint = WDTTColors.terminalBlue,
+                                        tint = RTpTUNColors.terminalBlue,
                                         modifier = Modifier.size(14.dp)
                                     )
                                     Text(
                                         text = uptimeText,
-                                        color = WDTTColors.terminalBlue,
+                                        color = RTpTUNColors.terminalBlue,
                                         fontSize = 12.sp,
                                         fontFamily = FontFamily.Monospace,
                                         fontWeight = FontWeight.Bold,
@@ -289,7 +289,7 @@ fun LogsTab() {
                         }
                     }
                     HorizontalDivider(
-                        color = WDTTColors.terminalBlue.copy(alpha = 0.35f),
+                        color = RTpTUNColors.terminalBlue.copy(alpha = 0.35f),
                         thickness = 1.dp
                     )
                 }
@@ -306,7 +306,7 @@ fun LogsTab() {
                             isDark = isDark,
                         )
                         HorizontalDivider(
-                            color = WDTTColors.terminalBlue.copy(alpha = 0.20f),
+                            color = RTpTUNColors.terminalBlue.copy(alpha = 0.20f),
                             thickness = 1.dp
                         )
                     }
@@ -368,10 +368,10 @@ fun LogsTab() {
 @Composable
 fun LogLine(entry: LogEntry) {
     val color = when {
-        entry.isError -> WDTTColors.terminalRed
-        entry.priority <= 2 -> WDTTColors.terminalGreen
-        entry.priority == 3 -> WDTTColors.terminalBlue
-        else -> WDTTColors.terminalText
+        entry.isError -> RTpTUNColors.terminalRed
+        entry.priority <= 2 -> RTpTUNColors.terminalGreen
+        entry.priority == 3 -> RTpTUNColors.terminalBlue
+        else -> RTpTUNColors.terminalText
     }
 
     var trigger by remember { mutableIntStateOf(0) }

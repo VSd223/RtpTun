@@ -65,7 +65,7 @@ object SubscriptionImport {
         var jsonStr = trimmed
         if (!trimmed.startsWith("[") && !trimmed.startsWith("{") && 
             !trimmed.startsWith("rtptun:") && !trimmed.startsWith("ptvb:") &&
-            !trimmed.startsWith("wdtt:") && !trimmed.startsWith("qwdtt:")) {
+            !trimmed.startsWith("rtptun:") && !trimmed.startsWith("qrtptun:")) {
             try {
                 val decoded = android.util.Base64.decode(trimmed, android.util.Base64.DEFAULT)
                 val textDecoded = String(decoded, Charsets.UTF_8).trim()
@@ -82,8 +82,7 @@ object SubscriptionImport {
             return ParsedRemoteSubscription(profiles = cipherProfiles)
         }
 
-        if (jsonStr.startsWith("rtptun://config") || jsonStr.startsWith("rtptun:config") ||
-            jsonStr.startsWith("ptvb://config") || jsonStr.startsWith("ptvb:config") ||
+        if (jsonStr.startsWith("ptvb://config") || jsonStr.startsWith("ptvb:config") ||
             jsonStr.startsWith("wdtt://config") || jsonStr.startsWith("wdtt:config") ||
             jsonStr.startsWith("qwdtt://config") || jsonStr.startsWith("qwdtt:config")) {
             val single = ConfigCipher.parseSingleLineConfig(jsonStr) ?: return null
@@ -189,8 +188,8 @@ object SubscriptionImport {
         return try {
             val normalized = trimmed
                 .replace("rtptun:config", "rtptun://config")
-                .replace("wdtt:config", "wdtt://config")
-                .replace("qwdtt:config", "qwdtt://config")
+                .replace("rtptun:config", "rtptun://config")
+                .replace("qrtptun:config", "qrtptun://config")
             val uri = android.net.Uri.parse(normalized)
             val name = uri.getQueryParameter("name") ?: "Импортированный профиль"
             val peer = uri.getQueryParameter("peer") ?: return null

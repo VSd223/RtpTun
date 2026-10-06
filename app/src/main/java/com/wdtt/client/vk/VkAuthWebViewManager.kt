@@ -68,6 +68,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
@@ -773,6 +774,10 @@ object VkAuthWebViewManager {
     }
 
     fun hasVkSessionCookie(): Boolean = vkRemixSid().isNotBlank()
+
+    suspend fun checkHasVkSessionCookieAsync(): Boolean = withContext(kotlinx.coroutines.Dispatchers.IO) {
+        hasVkSessionCookie()
+    }
 
     /** Получить access_token для VK API (автогенерация хешей звонков). */
     suspend fun obtainAccessToken(context: Context): Result<String> {

@@ -99,16 +99,16 @@ fun ConnectionPipelineCard(
     if (!state.visible) return
 
     val steps = state.stepsToShow()
-    val doneColor = WDTTColors.terminalGreen
-    val currentColor = WDTTColors.terminalBlue
+    val doneColor = RTpTUNColors.terminalGreen
+    val currentColor = RTpTUNColors.terminalBlue
     val pendingColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
-    val failedColor = WDTTColors.terminalRed
+    val failedColor = RTpTUNColors.terminalRed
     val lineDone = doneColor.copy(alpha = 0.7f)
     val linePending = pendingColor
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = WDTTColors.terminalBlue.copy(alpha = if (isDark) 0.10f else 0.08f),
+        color = RTpTUNColors.terminalBlue.copy(alpha = if (isDark) 0.10f else 0.08f),
         shape = RoundedCornerShape(0.dp),
     ) {
         Column(
