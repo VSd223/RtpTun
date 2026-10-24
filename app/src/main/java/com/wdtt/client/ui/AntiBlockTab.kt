@@ -2,9 +2,19 @@ package com.wdtt.client.ui
 
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -19,16 +29,19 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.wdtt.client.GoDnsProbe
 import com.wdtt.client.SettingsStore
@@ -62,6 +75,7 @@ fun AntiBlockTab(
     var goDnsDohCustomInput by rememberSaveable { mutableStateOf("") }
     var dnsTesting by remember { mutableStateOf(false) }
     var dnsTestResult by remember { mutableStateOf<String?>(null) }
+    var dnsDropdownExpanded by remember { mutableStateOf(false) }
 
     val turnTcpEnabled by settingsStore.turnTcpEnabled.collectAsStateWithLifecycle(initialValue = true)
     val noDtlsEnabled by settingsStore.noDtlsEnabled.collectAsStateWithLifecycle(initialValue = false)
@@ -100,34 +114,76 @@ fun AntiBlockTab(
 
     val scrollState = rememberScrollState()
 
+    val dnsPresets = remember {
+        listOf(
+            "yandex" to "🇷🇺 Яндекс Безопасный (UDP 77.88.8.8)",
+            "doh-yandex" to "🔒 Яндекс DoH (Шифрованный HTTPS)",
+            "cloudflare" to "⚡ Cloudflare (UDP 1.1.1.1)",
+            "doh-cloudflare" to "🔒 Cloudflare DoH (Шифрованный HTTPS)",
+            "google" to "🌐 Google DNS (UDP 8.8.8.8)",
+            "doh-google" to "🔒 Google DoH (Шифрованный HTTPS)",
+            "mts" to "📡 МТС DNS",
+            "beeline" to "📡 Билайн DNS",
+            "megafon" to "📡 Мегафон DNS",
+            "tele2" to "📡 Теле2 DNS",
+            "sbermobile" to "📡 Сбермобайл DNS",
+            "volna" to "📡 Волна мобайл DNS",
+            "custom" to "⚙️ Свой UDP IP адрес",
+            "doh-custom" to "⚙️ Свой DoH URL (HTTPS)"
+        )
+    }
+
+    val currentDnsName = dnsPresets.find { it.first == goDnsPreset }?.second ?: "Выберите DNS"
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scrollState)
+            .animateContentSize()
             .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Шапка
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(bottom = 4.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Settings,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(26.dp)
-            )
-            Text(
-                text = "Настройки приложения",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(44.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+            Column {
+                Text(
+                    text = "Параметры и обход",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Гибкое управление защитой, DNS и транспортом",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
 
         // ═══ 0. Оформление и темы ═══
         AppSectionCard {
             Column(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier
+                    .padding(16.dp)
+                    .animateContentSize(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
@@ -141,9 +197,10 @@ fun AntiBlockTab(
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
-                        text = "Оформление и Тема",
+                        text = "Оформление интерфейса",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
@@ -151,33 +208,13 @@ fun AntiBlockTab(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    FilterChip(
-                        selected = currentPalette == "indigo",
-                        onClick = { onPaletteChange("indigo") },
-                        label = { Text("Индиго") }
-                    )
-                    FilterChip(
-                        selected = currentPalette == "cyberpunk",
-                        onClick = { onPaletteChange("cyberpunk") },
-                        label = { Text("Cyberpunk / Неон") }
-                    )
-                    FilterChip(
-                        selected = currentPalette == "amoled",
-                        onClick = { onPaletteChange("amoled") },
-                        label = { Text("Amoled Black") }
-                    )
-                    FilterChip(
-                        selected = currentPalette == "forest",
-                        onClick = { onPaletteChange("forest") },
-                        label = { Text("Лес") }
-                    )
-                    FilterChip(
-                        selected = currentPalette == "espresso",
-                        onClick = { onPaletteChange("espresso") },
-                        label = { Text("Espresso") }
-                    )
+                    ThemePreviewCard("indigo", "Индиго", Color(0xFF5B588D), Color(0xFF7E79B5), currentPalette, onPaletteChange)
+                    ThemePreviewCard("cyberpunk", "Cyberpunk", Color(0xFF00E5FF), Color(0xFFFF007F), currentPalette, onPaletteChange)
+                    ThemePreviewCard("amoled", "Amoled", Color(0xFF00E676), Color(0xFF121212), currentPalette, onPaletteChange)
+                    ThemePreviewCard("forest", "Лес", Color(0xFF5F5D68), Color(0xFF2E7D32), currentPalette, onPaletteChange)
+                    ThemePreviewCard("espresso", "Espresso", Color(0xFF6D4C41), Color(0xFF8D6E63), currentPalette, onPaletteChange)
                 }
             }
         }
@@ -185,8 +222,10 @@ fun AntiBlockTab(
         // ═══ 1. Обход Капчи & VK Режим ═══
         AppSectionCard {
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier
+                    .padding(16.dp)
+                    .animateContentSize(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -201,17 +240,14 @@ fun AntiBlockTab(
                     Text(
                         text = "Обход капчи и VK протокол",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Режим разгадывания капчи VK", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Выберите способ решения капчи при подключении к VK:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("Режим обхода (Звонок или Капча)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                    
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -226,59 +262,86 @@ fun AntiBlockTab(
                                     settingsStore.saveCaptchaSolveMethod("auto")
                                 }
                             },
-                            label = { Text("1. АВТО") }
+                            label = { Text("📞 Звонок (Авто по умолчанию)") },
+                            shape = RoundedCornerShape(10.dp)
                         )
                         FilterChip(
-                            selected = captchaMode == "auto" && captchaSolveMethod == "manual",
-                            onClick = {
-                                scope.launch {
-                                    settingsStore.saveCaptchaMode("auto")
-                                    settingsStore.saveCaptchaSolveMethod("manual")
-                                }
-                            },
-                            label = { Text("2. АВТО + РУЧНОЙ (Запасной WebView)") }
-                        )
-                        FilterChip(
-                            selected = captchaMode == "wv",
+                            selected = captchaMode == "wv" || captchaMode == "rjs",
                             onClick = {
                                 scope.launch {
                                     settingsStore.saveCaptchaMode("wv")
                                     settingsStore.saveCaptchaSolveMethod("manual")
                                 }
                             },
-                            label = { Text("3. РУЧНОЙ (Только WebView)") }
+                            label = { Text("🧩 Капча (Ручной ввод)") },
+                            shape = RoundedCornerShape(10.dp)
                         )
+                    }
+
+                    AnimatedVisibility(
+                        visible = captchaMode == "wv" || captchaMode == "rjs",
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.padding(top = 4.dp)
+                        ) {
+                            Text("Метод ручного ввода капчи:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilterChip(
+                                    selected = captchaMode == "wv",
+                                    onClick = {
+                                        scope.launch {
+                                            settingsStore.saveCaptchaMode("wv")
+                                            settingsStore.saveCaptchaSolveMethod("manual")
+                                        }
+                                    },
+                                    label = { Text("🌐 wv (WebView)") },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                FilterChip(
+                                    selected = captchaMode == "rjs",
+                                    onClick = {
+                                        scope.launch {
+                                            settingsStore.saveCaptchaMode("rjs")
+                                            settingsStore.saveCaptchaSolveMethod("manual")
+                                        }
+                                    },
+                                    label = { Text("⚡ rjs (RJS)") },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                            }
+                        }
                     }
                 }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Путь анонимизации VK", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Способ эмуляции трафика звонков VK (по умолчанию vkcalls)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Путь анонимизации трафика", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         FilterChip(
                             selected = vkAnonPath == "vkcalls",
-                            onClick = {
-                                scope.launch { settingsStore.saveVkAnonPath("vkcalls") }
-                            },
+                            onClick = { scope.launch { settingsStore.saveVkAnonPath("vkcalls") } },
                             label = { Text("vkcalls (Новый)") },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
                         )
                         FilterChip(
                             selected = vkAnonPath == "legacy",
-                            onClick = {
-                                scope.launch { settingsStore.saveVkAnonPath("legacy") }
-                            },
+                            onClick = { scope.launch { settingsStore.saveVkAnonPath("legacy") } },
                             label = { Text("legacy (Старый)") },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
                         )
                     }
                 }
@@ -288,8 +351,10 @@ fun AntiBlockTab(
         // ═══ 2. Безопасный и Шифрованный DNS ═══
         AppSectionCard {
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier
+                    .padding(16.dp)
+                    .animateContentSize(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -302,126 +367,161 @@ fun AntiBlockTab(
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
-                        text = "Безопасный и Шифрованный DNS",
+                        text = "Шифрованный DNS (DoH / UDP)",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
                 Text(
-                    "Защита от подмены DNS провайдером и утечек запросов через DoH (DNS-over-HTTPS)",
+                    "Защита от перехвата и подмены DNS-запросов провайдером",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                val dnsPresets = listOf(
-                    "yandex" to "Яндекс Безопасный (UDP 77.88.8.8)",
-                    "doh-yandex" to "🔒 Яндекс DoH (HTTPS / Шифрованный)",
-                    "cloudflare" to "Cloudflare (UDP 1.1.1.1)",
-                    "doh-cloudflare" to "🔒 Cloudflare DoH (HTTPS / Шифрованный)",
-                    "google" to "Google DNS (UDP 8.8.8.8)",
-                    "doh-google" to "🔒 Google DoH (HTTPS / Шифрованный)",
-                    "quad9" to "Quad9 (UDP 9.9.9.9)",
-                    "doh-quad9" to "🔒 Quad9 DoH (HTTPS / Шифрованный)",
-                    "adguard" to "AdGuard (Блокировка рекламы)",
-                    "custom" to "Свой UDP IP адрес",
-                    "doh-custom" to "🔒 Свой DoH URL (HTTPS)"
-                )
+                ExposedDropdownMenuBox(
+                    expanded = dnsDropdownExpanded,
+                    onExpandedChange = { dnsDropdownExpanded = !dnsDropdownExpanded },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = currentDnsName,
+                        onValueChange = {},
+                        readOnly = true,
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dnsDropdownExpanded) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
+                    )
 
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    dnsPresets.forEach { (presetKey, presetName) ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = goDnsPreset == presetKey,
+                    ExposedDropdownMenu(
+                        expanded = dnsDropdownExpanded,
+                        onDismissRequest = { dnsDropdownExpanded = false }
+                    ) {
+                        dnsPresets.forEach { (presetKey, presetName) ->
+                            DropdownMenuItem(
+                                text = { Text(presetName, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface) },
                                 onClick = {
+                                    dnsDropdownExpanded = false
+                                    dnsTestResult = null
                                     scope.launch { settingsStore.saveGoDns(presetKey, goDnsCustomInput, goDnsDohCustomInput) }
-                                }
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                presetName,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = if (presetKey.startsWith("doh")) FontWeight.SemiBold else FontWeight.Normal
-                            )
-                        }
-                    }
-                }
-
-                AnimatedVisibility(visible = goDnsPreset == "custom") {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedTextField(
-                            value = goDnsCustomInput,
-                            onValueChange = {
-                                goDnsCustomInput = it
-                                scope.launch { settingsStore.saveGoDns(goDnsPreset, it, goDnsDohCustomInput) }
-                            },
-                            label = { Text("IP адрес кастомного UDP DNS") },
-                            placeholder = { Text("например: 1.1.1.1,8.8.8.8") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    scope.launch {
-                                        dnsTesting = true
-                                        dnsTestResult = null
-                                        val res = withContext(Dispatchers.IO) {
-                                            GoDnsProbe.checkPreset("custom:$goDnsCustomInput")
-                                        }
-                                        dnsTesting = false
-                                        dnsTestResult = if (res.reachable) "✓ DNS работает (${res.okHosts.firstOrNull() ?: "OK"})"
-                                        else "✕ DNS недоступен"
-                                    }
                                 },
-                                enabled = !dnsTesting && goDnsCustomInput.isNotBlank(),
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                if (dnsTesting) {
-                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                } else {
-                                    Icon(Icons.Default.Verified, null, modifier = Modifier.size(16.dp))
-                                }
-                                Spacer(Modifier.width(6.dp))
-                                Text(if (dnsTesting) "Проверка..." else "Проверить DNS")
-                            }
-
-                            dnsTestResult?.let { text ->
-                                Text(
-                                    text = text,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (text.startsWith("✓")) Color(0xFF43A047) else MaterialTheme.colorScheme.error
-                                )
-                            }
+                                contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                            )
                         }
                     }
                 }
 
-                AnimatedVisibility(visible = goDnsPreset == "doh-custom") {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedTextField(
-                            value = goDnsDohCustomInput,
-                            onValueChange = {
-                                goDnsDohCustomInput = it
-                                scope.launch { settingsStore.saveGoDns(goDnsPreset, goDnsCustomInput, it) }
-                            },
-                            label = { Text("URL кастомного DoH (HTTPS)") },
-                            placeholder = { Text("https://dns.google/dns-query") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        )
+                AnimatedVisibility(
+                    visible = goDnsPreset == "custom",
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    OutlinedTextField(
+                        value = goDnsCustomInput,
+                        onValueChange = {
+                            goDnsCustomInput = it
+                            dnsTestResult = null
+                            scope.launch { settingsStore.saveGoDns(goDnsPreset, it, goDnsDohCustomInput) }
+                        },
+                        label = { Text("IP адрес кастомного UDP DNS") },
+                        placeholder = { Text("например: 77.88.8.8,1.1.1.1") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = goDnsPreset == "doh-custom",
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    OutlinedTextField(
+                        value = goDnsDohCustomInput,
+                        onValueChange = {
+                            goDnsDohCustomInput = it
+                            dnsTestResult = null
+                            scope.launch { settingsStore.saveGoDns(goDnsPreset, goDnsCustomInput, it) }
+                        },
+                        label = { Text("URL кастомного DoH (HTTPS)") },
+                        placeholder = { Text("https://dns.google/dns-query") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                val canCheckDns = !dnsTesting && when (goDnsPreset) {
+                    "custom" -> goDnsCustomInput.isNotBlank()
+                    "doh-custom" -> goDnsDohCustomInput.isNotBlank()
+                    else -> true
+                }
+
+                Button(
+                    onClick = {
+                        if (!canCheckDns) return@Button
+                        scope.launch {
+                            dnsTesting = true
+                            dnsTestResult = null
+                            try {
+                                val res = withContext(Dispatchers.IO) {
+                                    GoDnsProbe.checkPreset(
+                                        preset = goDnsPreset,
+                                        customRaw = goDnsCustomInput,
+                                        dohCustomRaw = goDnsDohCustomInput
+                                    )
+                                }
+                                dnsTestResult = if (res.reachable) {
+                                    "✓ Соединение стабильно (${res.okHosts.firstOrNull() ?: "OK"})"
+                                } else {
+                                    "✕ Сервер недоступен"
+                                }
+                            } catch (e: Exception) {
+                                dnsTestResult = "✕ Ошибка проверки"
+                            } finally {
+                                dnsTesting = false
+                            }
+                        }
+                    },
+                    enabled = canCheckDns,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
+                ) {
+                    if (dnsTesting) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Пинг DNS-сервера...")
+                    } else {
+                        Icon(Icons.Default.Verified, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text("Проверить доступность DNS")
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = dnsTestResult != null,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    dnsTestResult?.let { text ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (text.startsWith("✓")) Color(0xFF43A047).copy(alpha = 0.15f) else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = text,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (text.startsWith("✓")) Color(0xFF43A047) else MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(14.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -430,8 +530,10 @@ fun AntiBlockTab(
         // ═══ 3. SOCKS5 Прокси ═══
         AppSectionCard {
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier
+                    .padding(16.dp)
+                    .animateContentSize(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -444,17 +546,12 @@ fun AntiBlockTab(
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
-                        text = "Настройки SOCKS5 Прокси",
+                        text = "Локальный SOCKS5 Прокси",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
-
-                Text(
-                    "Локальный SOCKS5 прокси. Чтобы использовать, выберите режим SOCKS5 на главной вкладке.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
 
                 OutlinedTextField(
                     value = socksPortInput,
@@ -466,40 +563,58 @@ fun AntiBlockTab(
                             }
                         }
                     },
-                    label = { Text("Порт SOCKS5 прокси") },
+                    label = { Text("Порт SOCKS5 (по умолчанию 1080)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-                        Text(
-                            "Авторизация SOCKS5",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            "Требовать логин и пароль от клиентов",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                scope.launch { settingsStore.saveSocksAuthEnabled(!socksAuthEnabled) }
+                            }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text(
+                                "Требовать авторизацию",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                "Защита прокси логином и паролем",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = socksAuthEnabled,
+                            onCheckedChange = { enabled ->
+                                scope.launch { settingsStore.saveSocksAuthEnabled(enabled) }
+                            }
                         )
                     }
-                    Switch(
-                        checked = socksAuthEnabled,
-                        onCheckedChange = { enabled ->
-                            scope.launch { settingsStore.saveSocksAuthEnabled(enabled) }
-                        }
-                    )
                 }
 
-                AnimatedVisibility(visible = socksAuthEnabled) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                AnimatedVisibility(
+                    visible = socksAuthEnabled,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
                         OutlinedTextField(
                             value = socksUsernameInput,
                             onValueChange = { value ->
@@ -508,7 +623,7 @@ fun AntiBlockTab(
                                     scope.launch { settingsStore.saveSocksUsername(value) }
                                 }
                             },
-                            label = { Text("Логин SOCKS5 (юзер)") },
+                            label = { Text("Логин SOCKS5") },
                             singleLine = true,
                             isError = socksAuthEnabled && socksUsernameInput.isBlank(),
                             modifier = Modifier.fillMaxWidth(),
@@ -537,33 +652,31 @@ fun AntiBlockTab(
         // ═══ 4. Маскировка трафика & Транспорт ═══
         AppSectionCard {
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier
+                    .padding(16.dp)
+                    .animateContentSize(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Icon(
-                        Icons.Default.Router,
+                        Icons.Default.Shield,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
-                        text = "Маскировка трафика и Транспорт",
+                        text = "Транспорт и Обфускация",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Маскировка RTP пакетов", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Маскировать трафик под аудио (OPUS) или видео (H.264) звонок VK",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Маскировка RTP пакетов", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -571,98 +684,155 @@ fun AntiBlockTab(
                         FilterChip(
                             selected = obfsMode == "audio",
                             onClick = { scope.launch { settingsStore.saveObfsMode("audio") } },
-                            label = { Text("Аудио (OPUS)") },
-                            modifier = Modifier.weight(1f)
+                            label = { Text("🎧 Аудио (OPUS)") },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
                         )
                         FilterChip(
                             selected = obfsMode == "video",
                             onClick = { scope.launch { settingsStore.saveObfsMode("video") } },
-                            label = { Text("Видео (H.264)") },
-                            modifier = Modifier.weight(1f)
+                            label = { Text("🎬 Видео (H.264)") },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
                         )
                     }
                 }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Режим сетевого транспорта", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "UDP — стандартный быстрый транспорт для звонков и видео. TCP (TURN-TCP) — обход глубоких блокировок UDP на строгих провайдерах.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Сетевой протокол", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         FilterChip(
                             selected = !turnTcpEnabled,
-                            onClick = {
-                                scope.launch { settingsStore.saveTurnTcpEnabled(false) }
-                            },
+                            onClick = { scope.launch { settingsStore.saveTurnTcpEnabled(false) } },
                             label = { Text("⚡ UDP (Быстрый)") },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
                         )
                         FilterChip(
                             selected = turnTcpEnabled,
-                            onClick = {
-                                scope.launch { settingsStore.saveTurnTcpEnabled(true) }
-                            },
-                            label = { Text("🔒 TCP / TURN-TCP (Обход)") },
-                            modifier = Modifier.weight(1f)
+                            onClick = { scope.launch { settingsStore.saveTurnTcpEnabled(true) } },
+                            label = { Text("🔒 TCP / TURN-TCP") },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
                         )
                     }
                 }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                // Switch cards
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Обфускация No-DTLS (AEAD)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "Защита от глубокого анализа пакетов (DPI)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { scope.launch { settingsStore.saveNoDtlsEnabled(!noDtlsEnabled) } }
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text("Обфускация No-DTLS (AEAD)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                            Text("Защита от глубокого анализа пакетов (DPI)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(
+                            checked = noDtlsEnabled,
+                            onCheckedChange = { enabled -> scope.launch { settingsStore.saveNoDtlsEnabled(enabled) } }
                         )
                     }
-                    Switch(
-                        checked = noDtlsEnabled,
-                        onCheckedChange = { enabled ->
-                            scope.launch { settingsStore.saveNoDtlsEnabled(enabled) }
-                        }
-                    )
                 }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Подробные логи диагностирования", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "Записывать детализацию сетевых пакетов и шейкшейка",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { scope.launch { settingsStore.saveDetailedLogs(!detailedLogs) } }
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text("Подробные логи диагностирования", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                            Text("Запись отладочной информации пакетов", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(
+                            checked = detailedLogs,
+                            onCheckedChange = { enabled -> scope.launch { settingsStore.saveDetailedLogs(enabled) } }
                         )
                     }
-                    Switch(
-                        checked = detailedLogs,
-                        onCheckedChange = { enabled ->
-                            scope.launch { settingsStore.saveDetailedLogs(enabled) }
-                        }
-                    )
                 }
             }
         }
 
         Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun ThemePreviewCard(
+    paletteId: String,
+    title: String,
+    primaryColor: Color,
+    secondaryColor: Color,
+    selectedId: String,
+    onClick: (String) -> Unit
+) {
+    val isSelected = paletteId == selectedId
+    val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+    val borderWidth = if (isSelected) 2.dp else 1.dp
+
+    Surface(
+        onClick = { onClick(paletteId) },
+        shape = RoundedCornerShape(14.dp),
+        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        border = BorderStroke(borderWidth, borderColor),
+        modifier = Modifier
+            .width(88.dp)
+            .height(68.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(8.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(primaryColor)
+                )
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(secondaryColor)
+                )
+            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
+            )
+        }
     }
 }

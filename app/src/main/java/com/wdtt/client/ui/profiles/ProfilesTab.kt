@@ -22,12 +22,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -59,6 +61,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.*
 import com.wdtt.client.PeerAddress
 import com.wdtt.client.ConnectionProfile
 import com.wdtt.client.ProfilesStore
@@ -174,6 +179,17 @@ fun ProfilesTab(
     val pingResults = com.wdtt.client.PingHelper.pingResults
     val pingingState = com.wdtt.client.PingHelper.pingingState
     val pingJobs = remember { mutableMapOf<String, Job>() }
+
+    val tunnelRunning by com.wdtt.client.TunnelManager.running.collectAsStateWithLifecycle(initialValue = false)
+    val tunnelConnecting by com.wdtt.client.TunnelManager.isConnecting.collectAsStateWithLifecycle(initialValue = false)
+
+    LaunchedEffect(tunnelRunning, tunnelConnecting) {
+        if (tunnelRunning || tunnelConnecting) {
+            pingJobs.values.toList().forEach { it.cancel() }
+            pingJobs.clear()
+            profiles.forEach { pingingState[it.id] = false }
+        }
+    }
 
     fun pingProfile(profile: ConnectionProfile) {
         if (pingingState[profile.id] == true) return
@@ -384,6 +400,90 @@ fun ProfilesTab(
     val savedServerDtlsPort by settingsStore.serverDtlsPort.collectAsStateWithLifecycle(initialValue = 56000)
     val savedManualPortsEnabled by settingsStore.manualPortsEnabled.collectAsStateWithLifecycle(initialValue = false)
 
+    LaunchedEffect(scannedProfile) {
+        val profile = scannedProfile ?: return@LaunchedEffect
+        // Пробиваем IP только если в имени еще нет флага (эмодзи)
+        if (!profile.name.contains(Regex("\\p{So}"))) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val ip = profile.peer.substringBefore(":")
+                    val url = java.net.URL("http://ip-api.com/json/$ip?lang=ru")
+                    val conn = url.openConnection() as java.net.HttpURLConnection
+                    conn.connectTimeout = 3000
+                    conn.readTimeout = 3000
+                    if (conn.responseCode == 200) {
+                        val text = conn.inputStream.bufferedReader().use { it.readText() }
+                        val json = org.json.JSONObject(text)
+                        if (json.optString("status") == "success") {
+                            val countryCode = json.optString("countryCode", "")
+                            if (countryCode.isNotBlank() && countryCode != "XX") {
+                                val upper = countryCode.uppercase()
+                                val flag = if (upper.length == 2) {
+                                    val firstLetter = Character.codePointAt(upper, 0) - 0x41 + 0x1F1E6
+                                    val secondLetter = Character.codePointAt(upper, 1) - 0x41 + 0x1F1E6
+                                    String(Character.toChars(firstLetter)) + String(Character.toChars(secondLetter))
+                                } else ""
+                                
+                                if (flag.isNotEmpty()) {
+                                    withContext(Dispatchers.Main) {
+                                        scannedProfile = profile.copy(name = "$flag ${profile.name}")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    LaunchedEffect(scannedMultipleProfiles) {
+        val parsed = scannedMultipleProfiles ?: return@LaunchedEffect
+        val profilesToUpdate = parsed.profiles.filter { !it.name.contains(Regex("\\p{So}")) }
+        if (profilesToUpdate.isNotEmpty()) {
+            withContext(Dispatchers.IO) {
+                val updatedProfiles = parsed.profiles.toMutableList()
+                var modified = false
+                for ((index, profile) in updatedProfiles.withIndex()) {
+                    if (profile.name.contains(Regex("\\p{So}"))) continue
+                    try {
+                        val ip = profile.peer.substringBefore(":")
+                        val url = java.net.URL("http://ip-api.com/json/$ip?lang=ru")
+                        val conn = url.openConnection() as java.net.HttpURLConnection
+                        conn.connectTimeout = 2000
+                        conn.readTimeout = 2000
+                        if (conn.responseCode == 200) {
+                            val text = conn.inputStream.bufferedReader().use { it.readText() }
+                            val json = org.json.JSONObject(text)
+                            if (json.optString("status") == "success") {
+                                val countryCode = json.optString("countryCode", "")
+                                if (countryCode.isNotBlank() && countryCode != "XX") {
+                                    val upper = countryCode.uppercase()
+                                    val flag = if (upper.length == 2) {
+                                        val firstLetter = Character.codePointAt(upper, 0) - 0x41 + 0x1F1E6
+                                        val secondLetter = Character.codePointAt(upper, 1) - 0x41 + 0x1F1E6
+                                        String(Character.toChars(firstLetter)) + String(Character.toChars(secondLetter))
+                                    } else ""
+                                    
+                                    if (flag.isNotEmpty()) {
+                                        updatedProfiles[index] = profile.copy(name = "$flag ${profile.name}")
+                                        modified = true
+                                    }
+                                }
+                            }
+                        }
+                        kotlinx.coroutines.delay(200)
+                    } catch (_: Exception) {}
+                }
+                if (modified) {
+                    withContext(Dispatchers.Main) {
+                        scannedMultipleProfiles = parsed.copy(profiles = updatedProfiles)
+                    }
+                }
+            }
+        }
+    }
+
     val subscriptionGroupIds = remember(subscriptions) {
         subscriptions.mapNotNull { it.groupId.takeIf { id -> id.isNotBlank() } }.toSet()
     }
@@ -391,6 +491,7 @@ fun ProfilesTab(
     val visibleSubscriptions = remember(subscriptions, selectedFilterGroup) {
         when (selectedFilterGroup) {
             null -> subscriptions
+            "local" -> emptyList()
             else -> subscriptions.filter { it.groupId == selectedFilterGroup }
         }
     }
@@ -400,12 +501,13 @@ fun ProfilesTab(
     val visibleProfiles = remember(displayProfiles, pendingDeletes, selectedFilterGroup, collapsedGroupIds) {
         displayProfiles
             .filterNot { pendingDeletes.contains(it.id) }
-            .filter {
-                if (selectedFilterGroup == null) true
-                else it.groupId == selectedFilterGroup
-            }
-            .filterNot { profile ->
-                profile.groupId.isNotBlank() && collapsedGroupIds.contains(profile.groupId)
+            .filterNot { collapsedGroupIds.contains(it.groupId) }
+            .filter { profile ->
+                when (selectedFilterGroup) {
+                    null -> true
+                    "local" -> profile.groupId.isBlank()
+                    else -> profile.groupId == selectedFilterGroup
+                }
             }
     }
 
@@ -420,7 +522,9 @@ fun ProfilesTab(
 
     LaunchedEffect(visibleProfiles, isDragging) {
         if (!isDragging) {
-            draggingList = visibleProfiles
+            draggingList = visibleProfiles.sortedBy { profile ->
+                if (profile.groupId.isBlank()) 1 else 0
+            }
         }
     }
 
@@ -430,6 +534,37 @@ fun ProfilesTab(
         val text = clip?.getItemAt(0)?.text?.toString()?.trim().orEmpty()
         if (text.isBlank()) {
             Toast.makeText(context, "Буфер обмена пуст", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if ((text.startsWith("http://", ignoreCase = true) || text.startsWith("https://", ignoreCase = true)) &&
+            !text.contains("rtptun://config", ignoreCase = true)
+        ) {
+            savingSubscription = true
+            Toast.makeText(context, "Загрузка подписки по ссылке...", Toast.LENGTH_SHORT).show()
+            scope.launch {
+                val result = profilesStore.addSubscription(text)
+                savingSubscription = false
+                result.fold(
+                    onSuccess = { sub ->
+                        Toast.makeText(context, "Подписка «${sub.name}» добавлена ✓", Toast.LENGTH_SHORT).show()
+                        selectedFilterGroup = sub.groupId
+                    },
+                    onFailure = { e ->
+                        val parsed = parseMultipleConfigs(text)
+                        if (parsed != null) {
+                            if (parsed.profiles.size == 1) {
+                                scannedProfile = parsed.profiles.first()
+                            } else {
+                                scannedMultipleProfiles = parsed
+                            }
+                            Toast.makeText(context, "Конфигурация распознана", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Ошибка добавления подписки: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                )
+            }
             return
         }
 
@@ -831,8 +966,13 @@ fun ProfilesTab(
             confirmButton = {
                 Button(
                     onClick = {
-                        scope.launch { profilesStore.deleteProfile(target.id) }
+                        val targetId = target.id
+                        pendingDeletes = pendingDeletes + targetId
                         deleteTarget = null
+                        scope.launch {
+                            profilesStore.deleteProfile(targetId)
+                            pendingDeletes = pendingDeletes - targetId
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     shape = RoundedCornerShape(12.dp)
@@ -851,20 +991,58 @@ fun ProfilesTab(
     if (showBatchDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showBatchDeleteDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.DeleteSweep,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(36.dp)
+                )
+            },
             title = {
                 Text(
-                    text = "Удалить выбранные профили?",
+                    text = "Массовое удаление",
                     fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleLarge
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             },
             text = {
-                Text("Удалить выбранные профили (${selectedProfileIds.size} шт.)?\n\nЭто действие нельзя будет отменить.")
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Вы собираетесь удалить выбранные профили в количестве: ${selectedProfileIds.size} шт.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                            Text(
+                                text = "Это действие безвозвратно удалит выбранные подключения из памяти устройства.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
             },
             confirmButton = {
                 Button(
                     onClick = {
                         val idsToDelete = selectedProfileIds.toList()
+                        pendingDeletes = pendingDeletes + idsToDelete.toSet()
                         showBatchDeleteDialog = false
                         multiSelectMode = false
                         selectedProfileIds = emptySet()
@@ -872,6 +1050,7 @@ fun ProfilesTab(
                             idsToDelete.forEach { id ->
                                 profilesStore.deleteProfile(id)
                             }
+                            pendingDeletes = pendingDeletes - idsToDelete.toSet()
                             Toast.makeText(context, "Удалено профилей: ${idsToDelete.size}", Toast.LENGTH_SHORT).show()
                         }
                     },
@@ -948,75 +1127,151 @@ fun ProfilesTab(
         val profile = scannedProfile!!
         AlertDialog(
             onDismissRequest = { scannedProfile = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.CloudDownload,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(36.dp)
+                )
+            },
             title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Filled.Download,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Импорт профиля", fontWeight = FontWeight.Bold)
-                }
+                Text(
+                    text = "Новый профиль",
+                    fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Text(
-                        text = "Найден новый профиль для импорта!",
+                        text = "Добавить эту конфигурацию в список ваших подключений?",
                         style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
                     )
-                    
+
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            Text("📝 Название: ${profile.name}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                            Text("🌐 Сервер: ${profile.peer}", style = MaterialTheme.typography.bodyMedium)
-                            Text("⚡ Потоков: ${profile.workersPerHash}", style = MaterialTheme.typography.bodyMedium)
-                            val hashCount = if (profile.vkHashes.isBlank()) 0 else profile.vkHashes.trim().split(",").count { it.isNotBlank() }
-                            Text("🔑 Хешей: $hashCount", style = MaterialTheme.typography.bodyMedium)
+                            // Название
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Filled.Badge, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Text("Название", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(profile.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+
+                            // Сервер
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Filled.Dns, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Text("Адрес сервера", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    val displayPeer = if (profile.isReadOnly) {
+                                        val port = profile.peer.substringAfter(":", "56000")
+                                        "***.***.***.***:$port"
+                                    } else profile.peer
+                                    Text(displayPeer, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+
+                            // Детали (Потоки и Хеши)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Filled.Bolt, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Потоки", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(profile.workersPerHash.toString(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                }
+                                
+                                val hashCount = if (profile.vkHashes.isBlank()) 0 else profile.vkHashes.trim().split(",").count { it.isNotBlank() }
+                                
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.errorContainer,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Filled.VpnKey, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Хеши", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(hashCount.toString(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
                         }
                     }
 
                     if (profile.vkHashes.isBlank()) {
                         Surface(
                             shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f),
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("⚠️", style = MaterialTheme.typography.bodyMedium)
+                                Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(20.dp))
                                 Text(
-                                    text = "Хеш звонка ВКонтакте не указан. После сохранения добавьте его вручную в настройках профиля.",
+                                    text = "Хеш звонка не указан. Добавьте его позже в настройках, иначе профиль может не работать.",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    lineHeight = 16.sp
                                 )
                             }
                         }
                     }
-                    
-                    Text(
-                        text = "Вы хотите сохранить его в список профилей?",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
                         scope.launch {
+                            val existing = profiles.find { it.peer.equals(profile.peer, ignoreCase = true) && it.groupId == profile.groupId }
+                            if (existing != null) {
+                                profilesStore.deleteProfile(existing.id)
+                            }
                             profilesStore.saveProfile(profile)
                             Toast.makeText(context, "Профиль «${profile.name}» сохранен!", Toast.LENGTH_SHORT).show()
                             scannedProfile = null
@@ -1514,6 +1769,54 @@ fun ProfilesTab(
             }
         }
 
+        // Чипы фильтрации по папкам и категориям
+        val hasGroupChips = groups.isNotEmpty() || subscriptions.isNotEmpty()
+        if (hasGroupChips) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilterChip(
+                    selected = selectedFilterGroup == null,
+                    onClick = { selectedFilterGroup = null },
+                    label = { Text("Все") },
+                    leadingIcon = if (selectedFilterGroup == null) {
+                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                    } else null
+                )
+
+                FilterChip(
+                    selected = selectedFilterGroup == "local",
+                    onClick = { selectedFilterGroup = "local" },
+                    label = { Text("📱 Локальные") },
+                    leadingIcon = if (selectedFilterGroup == "local") {
+                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                    } else null
+                )
+
+                groups.forEach { group ->
+                    val isSub = subscriptionGroupIds.contains(group.id)
+                    FilterChip(
+                        selected = selectedFilterGroup == group.id,
+                        onClick = {
+                            selectedFilterGroup = if (selectedFilterGroup == group.id) null else group.id
+                        },
+                        label = { Text(group.name) },
+                        leadingIcon = {
+                            Icon(
+                                if (isSub) Icons.Filled.RssFeed else Icons.Filled.Folder,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    )
+                }
+            }
+        }
+
         if (visibleSubscriptions.isNotEmpty()) {
             Text(
                 "Источники и подписки",
@@ -1861,23 +2164,6 @@ fun ProfilesTab(
                                 Spacer(Modifier.width(8.dp))
 
                                 androidx.compose.material3.FilledIconButton(
-                                    onClick = { moveToGroupTarget = profile },
-                                    modifier = Modifier.size(28.dp),
-                                    colors = androidx.compose.material3.IconButtonDefaults.filledIconButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Folder,
-                                        contentDescription = "В папку...",
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-
-                                Spacer(Modifier.width(8.dp))
-
-                                androidx.compose.material3.FilledIconButton(
                                     onClick = { showExportSheet = profile },
                                     modifier = Modifier.size(28.dp),
                                     colors = androidx.compose.material3.IconButtonDefaults.filledIconButtonColors(
@@ -1892,21 +2178,23 @@ fun ProfilesTab(
                                     )
                                 }
 
-                                Spacer(Modifier.width(8.dp))
+                                if (!profile.isReadOnly) {
+                                    Spacer(Modifier.width(8.dp))
 
-                                androidx.compose.material3.FilledIconButton(
-                                    onClick = { openEditor(profile) },
-                                    modifier = Modifier.size(28.dp),
-                                    colors = androidx.compose.material3.IconButtonDefaults.filledIconButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Edit,
-                                        contentDescription = "Изменить",
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                    androidx.compose.material3.FilledIconButton(
+                                        onClick = { openEditor(profile) },
+                                        modifier = Modifier.size(28.dp),
+                                        colors = androidx.compose.material3.IconButtonDefaults.filledIconButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Edit,
+                                            contentDescription = "Изменить",
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1953,67 +2241,7 @@ fun ProfilesTab(
         }
     }
 
-    val isPingingAny = pingingState.values.any { it }
-    if (isPingingAny) {
-        androidx.compose.ui.window.Dialog(onDismissRequest = { }) {
-            Surface(
-                shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .background(
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                                shape = androidx.compose.foundation.shape.CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.SignalCellularAlt,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-                    
-                    Text(
-                        text = "Замер задержки",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    
-                    Text(
-                        text = "Проверяем доступность и измеряем скорость подключения. Это может занять до 20 секунд.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                    
-                    androidx.compose.material3.LinearProgressIndicator(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp)),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
-                    )
-                    TextButton(onClick = ::cancelPings) {
-                        Text("Отменить")
-                    }
-                }
-            }
-        }
-    }
+
 
     if (showCreateSheet) {
         ModalBottomSheet(
@@ -2044,17 +2272,48 @@ fun ProfilesTab(
                             val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                             val clipData = clipboard.primaryClip
                             if (clipData != null && clipData.itemCount > 0) {
-                                val text = clipData.getItemAt(0).text?.toString() ?: ""
-                                val parsed = parseMultipleConfigs(text)
-                                if (parsed != null) {
-                                    if (parsed.profiles.size == 1) {
-                                        scannedProfile = parsed.profiles.first()
-                                    } else {
-                                        scannedMultipleProfiles = parsed
+                                val text = clipData.getItemAt(0).text?.toString()?.trim() ?: ""
+                                
+                                if ((text.startsWith("http://", ignoreCase = true) || text.startsWith("https://", ignoreCase = true)) &&
+                                    !text.contains("rtptun://config", ignoreCase = true)
+                                ) {
+                                    savingSubscription = true
+                                    Toast.makeText(context, "Загрузка подписки по ссылке...", Toast.LENGTH_SHORT).show()
+                                    scope.launch {
+                                        val result = profilesStore.addSubscription(text)
+                                        savingSubscription = false
+                                        result.fold(
+                                            onSuccess = { sub ->
+                                                Toast.makeText(context, "Подписка «${sub.name}» добавлена ✓", Toast.LENGTH_SHORT).show()
+                                                selectedFilterGroup = sub.groupId
+                                            },
+                                            onFailure = { e ->
+                                                val parsed = parseMultipleConfigs(text)
+                                                if (parsed != null) {
+                                                    if (parsed.profiles.size == 1) {
+                                                        scannedProfile = parsed.profiles.first()
+                                                    } else {
+                                                        scannedMultipleProfiles = parsed
+                                                    }
+                                                    Toast.makeText(context, "Конфигурация успешно распознана", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(context, "Ошибка добавления подписки: ${e.message}", Toast.LENGTH_LONG).show()
+                                                }
+                                            }
+                                        )
                                     }
-                                    Toast.makeText(context, "Конфигурация успешно распознана!", Toast.LENGTH_SHORT).show()
                                 } else {
-                                    Toast.makeText(context, "В буфере обмена нет подходящей конфигурации", Toast.LENGTH_LONG).show()
+                                    val parsed = parseMultipleConfigs(text)
+                                    if (parsed != null) {
+                                        if (parsed.profiles.size == 1) {
+                                            scannedProfile = parsed.profiles.first()
+                                        } else {
+                                            scannedMultipleProfiles = parsed
+                                        }
+                                        Toast.makeText(context, "Конфигурация успешно распознана!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "В буфере обмена нет подходящей конфигурации", Toast.LENGTH_LONG).show()
+                                    }
                                 }
                             } else {
                                 Toast.makeText(context, "Буфер обмена пуст", Toast.LENGTH_SHORT).show()

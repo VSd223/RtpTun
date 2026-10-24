@@ -91,6 +91,7 @@ object TunnelManager {
     private var lastSessionTrafficMb = 0.0
 
     val running = MutableStateFlow(false)
+    val isFullyConnected = MutableStateFlow(false)
     /** true с момента нажатия «Подключить» до запуска Go-процесса или ошибки/отмены. */
     val isConnecting = MutableStateFlow(false)
     /** Epoch ms когда текущий Go-процесс стал running; 0 если не подключён. */
@@ -582,10 +583,15 @@ object TunnelManager {
                         throw e
                     } catch (e: Exception) {
                         val msg = e.message ?: e::class.java.simpleName
-                        updateLog("vk_auth_fail", "Ошибка авторизации VK: $msg", 99, true)
-                        failConnectionPipeline(ConnectionStep.VK)
-                        abortStart(isSwitching, msg)
-                        return@launch
+                        if (forceStart) {
+                            updateLog("vk_auth_warn", "⚠️ [VK Auth] Ошибка авторизации (${msg}), но запуск принудительно продолжен (forceStart)", 50, false)
+                            advanceConnectionPipeline(ConnectionStep.VK, ConnectionStep.WRAP)
+                        } else {
+                            updateLog("vk_auth_fail", "Ошибка авторизации VK: $msg", 99, true)
+                            failConnectionPipeline(ConnectionStep.VK)
+                            abortStart(isSwitching, msg)
+                            return@launch
+                        }
                     }
                 }
 
@@ -2021,6 +2027,22 @@ object TunnelManager {
         cancelPipelineStepTimeout()
         connectionPipeline.update { state ->
             if (!state.visible) state else state.copy(failed = step, timedOut = false)
+        }
+
+        val ctx = lastContext?.get()
+        if (ctx != null) {
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try {
+                    val settingsStore = SettingsStore(ctx)
+                    val currentPreset = settingsStore.goDnsPreset.first()
+                    if (currentPreset != "yandex" && currentPreset != "doh-yandex") {
+                        settingsStore.saveGoDns("yandex")
+                        addRawDiagLog("⚠️ Ошибка VPN/DNS на шаге $step. Самовосстановление: автоматическое переключение DNS на Яндекс", isError = true)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("TunnelManager", "Self-heal DNS switch failed: ${e.message}")
+                }
+            }
         }
     }
 

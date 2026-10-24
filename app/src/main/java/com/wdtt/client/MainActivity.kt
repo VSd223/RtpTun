@@ -23,10 +23,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -56,6 +60,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -491,13 +496,14 @@ fun MainScreen(
         }
     }
 
-    // Если туннель успешно запущен — возвращаем пользователя на главный экран (Подключение, индекс 0)
-    // Если произошла ошибка (tunnelRunning не стал true) — остаёмся на вкладке "Логи"
+    // Когда туннель успешно запущен (интерфейс поднялся) — возвращаем пользователя на главный экран (Подключение, индекс 0)
+    var previousTunnelRunning by remember { mutableStateOf(TunnelManager.running.value) }
     LaunchedEffect(tunnelRunning) {
-        if (tunnelRunning && selectedTab == 4) {
-            delay(800)
+        if (tunnelRunning && !previousTunnelRunning) {
+            delay(600)
             selectedTab = 0
         }
+        previousTunnelRunning = tunnelRunning
     }
 
     LaunchedEffect(activeNavItems, selectedTab) {
@@ -642,9 +648,13 @@ fun MainScreen(
                     targetState = selectedTab,
                     transitionSpec = {
                         val direction = if (targetState > initialState) 1 else -1
-                        (androidx.compose.animation.slideInHorizontally(animationSpec = tween(220, easing = androidx.compose.animation.core.LinearOutSlowInEasing)) { width -> direction * width / 3 } + androidx.compose.animation.fadeIn(animationSpec = tween(220)))
+                        (androidx.compose.animation.slideInHorizontally(animationSpec = spring(dampingRatio = 0.82f, stiffness = 320f)) { width -> direction * width / 4 } +
+                         androidx.compose.animation.fadeIn(animationSpec = tween(220)) +
+                         scaleIn(animationSpec = spring(dampingRatio = 0.82f, stiffness = 320f), initialScale = 0.95f))
                             .togetherWith(
-                                androidx.compose.animation.slideOutHorizontally(animationSpec = tween(220, easing = androidx.compose.animation.core.FastOutLinearInEasing)) { width -> -direction * width / 3 } + androidx.compose.animation.fadeOut(animationSpec = tween(180))
+                                androidx.compose.animation.slideOutHorizontally(animationSpec = spring(dampingRatio = 0.82f, stiffness = 320f)) { width -> -direction * width / 4 } +
+                                androidx.compose.animation.fadeOut(animationSpec = tween(180)) +
+                                scaleOut(animationSpec = spring(dampingRatio = 0.82f, stiffness = 320f), targetScale = 0.95f)
                             )
                     },
                     modifier = Modifier
@@ -747,9 +757,9 @@ private fun ProxyNavigationBar(
         if (dragTargetIndex !in navItems.indices) {
             indicatorIndex.animateTo(
                 targetValue = selectedVisualIndex.toFloat(),
-                animationSpec = tween(
-                    durationMillis = 720,
-                    easing = CubicBezierEasing(0.2f, 0.9f, 0.24f, 1f)
+                animationSpec = spring(
+                    dampingRatio = 0.75f,
+                    stiffness = 300f
                 )
             )
         }
@@ -803,6 +813,7 @@ private fun ProxyNavigationBar(
                     navItems.forEachIndexed { index, item ->
                         val emphasis = (1f - abs(index - dragVisualIndex)).coerceIn(0f, 1f)
                         val iconColor = lerp(unselectedColor, selectedColor, emphasis)
+                        val scale = 1f + (emphasis * 0.12f)
 
                         Column(
                             modifier = Modifier
@@ -813,7 +824,10 @@ private fun ProxyNavigationBar(
                             verticalArrangement = Arrangement.Center,
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Box(contentAlignment = Alignment.TopEnd) {
+                            Box(
+                                contentAlignment = Alignment.TopEnd,
+                                modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)
+                            ) {
                                 Icon(
                                     imageVector = item.unselectedIcon,
                                     contentDescription = item.label,
@@ -839,7 +853,8 @@ private fun ProxyNavigationBar(
                                 ),
                                 fontWeight = if (emphasis > 0.55f) FontWeight.SemiBold else FontWeight.Normal,
                                 color = iconColor.copy(alpha = if (emphasis > 0.4f) 1f else 0.5f),
-                                maxLines = 1
+                                maxLines = 1,
+                                modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)
                             )
                         }
                     }

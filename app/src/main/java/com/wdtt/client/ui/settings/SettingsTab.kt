@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
@@ -983,6 +984,7 @@ fun SettingsTabContent(
                                                 subAutoRefreshMenuExpanded = false
                                                 scope.launch {
                                                     settingsStore.saveSubscriptionAutoRefreshHours(hours)
+                                                    com.wdtt.client.profiles.SubscriptionUpdateScheduler.scheduleOrCancel(context, hours)
                                                 }
                                             },
                                             trailingIcon = {
@@ -1059,6 +1061,31 @@ fun SettingsTabContent(
                                     }
                                 }
                             )
+                        }
+
+                        if (updateCheckIntervalHours != com.wdtt.client.UPDATE_CHECK_NEVER) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                listOf(
+                                    6 to "6 ч",
+                                    12 to "12 ч",
+                                    24 to "24 ч (по умолч.)",
+                                    48 to "48 ч"
+                                ).forEach { (hours, label) ->
+                                    FilterChip(
+                                        selected = updateCheckIntervalHours == hours,
+                                        onClick = {
+                                            scope.launch {
+                                                settingsStore.saveUpdateCheckIntervalHours(hours)
+                                            }
+                                        },
+                                        label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                                    )
+                                }
+                            }
                         }
 
                         Row(
@@ -1689,20 +1716,20 @@ fun SettingsTabContent(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scrollState)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // ═══ Топ-тулбар с заголовком и иконкой настроек ═══
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp),
+                .padding(vertical = 2.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "RTpTUN",
-                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold),
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold),
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
@@ -1711,12 +1738,14 @@ fun SettingsTabContent(
 
             // Иконка настроек (шестеренка)
             IconButton(
-                onClick = { onOpenSettings() }
+                onClick = { onOpenSettings() },
+                modifier = Modifier.size(36.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Settings,
                     contentDescription = "Перейти в Настройки",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
@@ -1725,38 +1754,66 @@ fun SettingsTabContent(
 
         // ═══ 1. ВЫБОР ПРОФИЛЯ И МОЩНОСТЬ (СВЕРХУ) ═══
         AppSectionCard(
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = PaddingValues(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Сервер / Профиль", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Сервер / Профиль", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
 
             if (profiles.isNotEmpty()) {
                 var expanded by remember { mutableStateOf(false) }
                 Box(modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(
                         onClick = { expanded = true },
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f),
                             contentColor = MaterialTheme.colorScheme.primary
                         ),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                     ) {
-                        Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
                         val activeProfile = profiles.find { it.id == currentProfileId }
-                        val labelText = when {
-                            activeProfile != null && (activeProfile.isReadOnly || activeProfile.groupId.isNotBlank()) -> "🔒 $currentProfileName (Из подписки)"
-                            currentProfileName.isNotEmpty() -> "Профиль: $currentProfileName"
-                            else -> "Быстрый выбор профиля"
+                        if (activeProfile != null) {
+                            com.wdtt.client.CountryFlagBadge(peer = activeProfile.peer, name = activeProfile.name, modifier = Modifier.size(24.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    if (activeProfile.isReadOnly || activeProfile.groupId.isNotBlank()) {
+                                        Icon(Icons.Filled.Lock, null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                    Text(
+                                        text = activeProfile.name,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                }
+                                Text(
+                                    text = PeerAddress.host(activeProfile.peer),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
+                        } else {
+                            Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Быстрый выбор профиля",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
                         }
-                        Text(
-                            text = labelText,
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f)
-                        )
                         Icon(Icons.Default.ChevronRight, null, Modifier.size(18.dp))
                     }
 
@@ -1772,11 +1829,28 @@ fun SettingsTabContent(
                             val isSubProfile = p.isReadOnly || p.groupId.isNotBlank()
                             DropdownMenuItem(
                                 text = {
-                                    Text(
-                                        text = if (isSubProfile) "🔒 ${p.name} (Из подписки)" else p.name,
-                                        fontWeight = if (p.id == currentProfileId) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (p.id == currentProfileId) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        com.wdtt.client.CountryFlagBadge(peer = p.peer, name = p.name, modifier = Modifier.size(20.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = if (isSubProfile) "🔒 ${p.name} (Из подписки)" else p.name,
+                                                fontWeight = if (p.id == currentProfileId) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (p.id == currentProfileId) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = PeerAddress.host(p.peer),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
                                 },
                                 onClick = {
                                     expanded = false
@@ -1886,8 +1960,8 @@ fun SettingsTabContent(
         val tunnelSecretsMissing = savedConnectionPassword.isBlank()
 
         AppSectionCard(
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = PaddingValues(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             GrandPowerButton(
                 tunnelRunning = tunnelRunning,
@@ -2870,6 +2944,12 @@ private fun GoDnsSettingsSection(
     val udpPresets = remember {
         listOf(
             "yandex" to "Яндекс DNS",
+            "mts" to "МТС DNS",
+            "beeline" to "Билайн DNS",
+            "megafon" to "Мегафон DNS",
+            "tele2" to "Теле2 DNS",
+            "sbermobile" to "Сбермобайл DNS",
+            "volna" to "Волна мобайл DNS",
             "cloudflare" to "Cloudflare",
             "google" to "Google DNS",
             "custom" to "Свой DNS",

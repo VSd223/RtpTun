@@ -129,7 +129,11 @@ object GoDnsProbe {
             return trimmed
         }
         return when (trimmed.lowercase()) {
-            "common.dot.dns.yandex.net", "dns.yandex.ru", "77.88.8.8", "77.88.8.1" ->
+            "77.88.8.8", "77.88.8.1", "common.dot.dns.yandex.net", "dns.yandex.ru" ->
+                "https://$trimmed/dns-query"
+            "1.1.1.1", "1.0.0.1", "cloudflare-dns.com" ->
+                "https://$trimmed/dns-query"
+            "8.8.8.8", "8.8.4.4", "dns.google" ->
                 "https://$trimmed/dns-query"
             else -> "https://$trimmed/dns-query"
         }
@@ -140,20 +144,57 @@ object GoDnsProbe {
             val txId = Random.nextInt(0, 0x10000)
             val query = buildDnsQuery(txId, PROBE_HOST)
             val timeout = timeoutMs.coerceIn(500, 5000).toLong()
-            val client = OkHttpClient.Builder()
+
+            val hostHeader = dohHostHeader(endpoint)
+            val host = try { URL(endpoint).host } catch (_: Exception) { "" }
+
+            val clientBuilder = OkHttpClient.Builder()
                 .protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
                 .connectTimeout(timeout, TimeUnit.MILLISECONDS)
                 .readTimeout(timeout, TimeUnit.MILLISECONDS)
                 .writeTimeout(timeout, TimeUnit.MILLISECONDS)
                 .callTimeout(timeout + 500, TimeUnit.MILLISECONDS)
-                .build()
+
+            clientBuilder.dns(object : okhttp3.Dns {
+                override fun lookup(hostname: String): List<InetAddress> {
+                    val fallbackIps = when (hostname.lowercase()) {
+                        "common.dot.dns.yandex.net", "dns.yandex.ru" -> listOf("77.88.8.8", "77.88.8.1")
+                        "cloudflare-dns.com" -> listOf("1.1.1.1", "1.0.0.1")
+                        "dns.google" -> listOf("8.8.8.8", "8.8.4.4")
+                        else -> emptyList()
+                    }
+                    if (fallbackIps.isNotEmpty()) {
+                        return try {
+                            okhttp3.Dns.SYSTEM.lookup(hostname)
+                        } catch (_: Exception) {
+                            fallbackIps.map { InetAddress.getByName(it) }
+                        }
+                    }
+                    return okhttp3.Dns.SYSTEM.lookup(hostname)
+                }
+            })
+
+            if (hostHeader != null || host.matches(Regex("""\d{1,3}(?:\.\d{1,3}){3}"""))) {
+                val expectedHost = hostHeader ?: host
+                clientBuilder.hostnameVerifier { _, session ->
+                    try {
+                        javax.net.ssl.HttpsURLConnection.getDefaultHostnameVerifier().verify(expectedHost, session)
+                    } catch (_: Exception) {
+                        true
+                    }
+                }
+            }
+
+            val client = clientBuilder.build()
 
             val requestBuilder = Request.Builder()
                 .url(endpoint)
                 .addHeader("Accept", "application/dns-message")
                 .post(query.toRequestBody(dnsMessageType))
 
-            dohHostHeader(endpoint)?.let { requestBuilder.header("Host", it) }
+            if (hostHeader != null) {
+                requestBuilder.header("Host", hostHeader)
+            }
 
             client.newCall(requestBuilder.build()).execute().use { response ->
                 if (!response.isSuccessful) return false

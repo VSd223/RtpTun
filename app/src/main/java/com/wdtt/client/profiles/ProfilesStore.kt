@@ -102,7 +102,7 @@ class ProfilesStore(context: Context) {
         .map { prefs ->
             val idsRaw = prefs[idsKey()] ?: ""
             if (idsRaw.isBlank()) return@map emptyList()
-            val ids = idsRaw.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            val ids = idsRaw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
             val list = mutableListOf<ConnectionProfile>()
             for (id in ids) {
                 val name = prefs[nameKey(id)] ?: ""
@@ -126,7 +126,7 @@ class ProfilesStore(context: Context) {
         .map { prefs ->
             val idsRaw = prefs[groupsIdsKey()] ?: ""
             if (idsRaw.isBlank()) return@map emptyList()
-            val ids = idsRaw.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            val ids = idsRaw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
             val list = mutableListOf<ProfileGroup>()
             for (id in ids) {
                 val name = prefs[groupNameKey(id)] ?: ""
@@ -140,7 +140,7 @@ class ProfilesStore(context: Context) {
         .map { prefs ->
             val idsRaw = prefs[subscriptionsIdsKey()] ?: ""
             if (idsRaw.isBlank()) return@map emptyList()
-            val ids = idsRaw.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            val ids = idsRaw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
             ids.mapNotNull { id ->
                 val name = prefs[subNameKey(id)] ?: return@mapNotNull null
                 val url = prefs[subUrlKey(id)] ?: ""
@@ -224,9 +224,10 @@ class ProfilesStore(context: Context) {
             val groupId = UUID.randomUUID().toString()
             saveGroup(ProfileGroup(groupId, groupName))
 
-            for (p in parsed.profiles) {
-                saveProfile(p.copy(id = UUID.randomUUID().toString(), groupId = groupId, isReadOnly = true), fromSubscriptionSync = true)
+            val newProfiles = parsed.profiles.map { p ->
+                p.copy(id = UUID.randomUUID().toString(), groupId = groupId, isReadOnly = true)
             }
+            saveProfilesBatch(newProfiles)
 
             val id = UUID.randomUUID().toString()
             val sub = ProfileSubscription(
@@ -265,9 +266,10 @@ class ProfilesStore(context: Context) {
             saveGroup(ProfileGroup(groupId, groupName))
             deleteProfilesInGroup(groupId)
 
-            for (p in parsed.profiles) {
-                saveProfile(p.copy(id = UUID.randomUUID().toString(), groupId = groupId, isReadOnly = true), fromSubscriptionSync = true)
+            val newProfiles = parsed.profiles.map { p ->
+                p.copy(id = UUID.randomUUID().toString(), groupId = groupId, isReadOnly = true)
             }
+            saveProfilesBatch(newProfiles)
 
             saveSubscription(
                 sub.copy(
@@ -372,6 +374,27 @@ class ProfilesStore(context: Context) {
         }
     }
 
+    suspend fun saveProfilesBatch(profiles: List<ConnectionProfile>) = withContext(Dispatchers.IO) {
+        dataStore.edit { prefs ->
+            val idsRaw = prefs[idsKey()] ?: ""
+            val ids = idsRaw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
+            for (profile in profiles) {
+                if (!ids.contains(profile.id)) ids.add(profile.id)
+                prefs[nameKey(profile.id)] = profile.name
+                prefs[peerKey(profile.id)] = profile.peer
+                prefs[hashesKey(profile.id)] = profile.vkHashes
+                prefs[workersKey(profile.id)] = profile.workersPerHash
+                prefs[portKey(profile.id)] = profile.listenPort
+                prefs[passKey(profile.id)] = secureStore.encrypt(profile.password)
+                prefs[trafficKey(profile.id)] = profile.trafficMb
+                prefs[groupIdKey(profile.id)] = profile.groupId
+                prefs[useGlobalHashesKey(profile.id)] = profile.useGlobalHashes
+                prefs[isReadOnlyKey(profile.id)] = profile.isReadOnly
+            }
+            prefs[idsKey()] = ids.joinToString(",")
+        }
+    }
+
     suspend fun saveGroup(group: ProfileGroup) = withContext(Dispatchers.IO) {
         dataStore.edit { prefs ->
             val idsRaw = prefs[groupsIdsKey()] ?: ""
@@ -432,6 +455,7 @@ class ProfilesStore(context: Context) {
 
     suspend fun importProfilesToGroup(groupName: String, profiles: List<ConnectionProfile>, fromSubscription: Boolean = false) = withContext(Dispatchers.IO) {
         val groupId = resolveGroupIdForImport(groupName, fromSubscription)
+        deleteProfilesInGroup(groupId)
         for (p in profiles) {
             saveProfile(p.copy(id = UUID.randomUUID().toString(), groupId = groupId, isReadOnly = true), fromSubscriptionSync = fromSubscription)
         }

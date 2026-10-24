@@ -192,6 +192,7 @@ class SettingsStore(context: Context) {
         /** DNS для Go-резолвера (login.vk.ru, api.vk.me). */
         fun normalizeGoDnsPreset(preset: String?): String {
             return when (preset?.trim()?.lowercase()) {
+                "yandex", "mts", "beeline", "megafon", "tele2", "sbermobile", "volna",
                 "cloudflare", "google", "custom",
                 "doh-yandex", "doh-cloudflare", "doh-google", "doh-custom" -> preset.trim().lowercase()
                 else -> "yandex" // включая устаревший "auto"
@@ -240,11 +241,17 @@ class SettingsStore(context: Context) {
 
         fun goDnsDisplay(preset: String, customRaw: String = ""): GoDnsDisplay {
             return when (normalizeGoDnsPreset(preset)) {
+                "mts" -> GoDnsDisplay("mts", "МТС DNS", listOf("212.188.4.10", "195.34.32.116", "213.87.0.1", "213.87.1.1"))
+                "beeline" -> GoDnsDisplay("beeline", "Билайн DNS", listOf("10.10.22.3", "194.67.2.114", "194.67.1.154", "85.249.22.248", "85.249.22.249", "85.249.22.251", "85.249.22.250"))
+                "megafon" -> GoDnsDisplay("megafon", "Мегафон DNS", listOf("10.10.22.3", "83.169.217.22", "195.208.4.1"))
+                "tele2" -> GoDnsDisplay("tele2", "Теле2 DNS", listOf("176.59.62.126", "176.59.62.125"))
+                "sbermobile" -> GoDnsDisplay("sbermobile", "Сбермобайл DNS", listOf("176.59.31.182", "176.59.31.183", "176.59.223.159", "176.59.95.243", "176.59.63.148", "176.59.63.204", "176.59.127.156", "176.59.62.125", "176.59.62.126"))
+                "volna" -> GoDnsDisplay("volna", "Волна мобайл DNS", listOf("80.245.112.23", "195.208.4.1", "194.147.49.16"))
                 "cloudflare" -> GoDnsDisplay("cloudflare", "Cloudflare", listOf("1.1.1.1", "1.0.0.1"))
                 "google" -> GoDnsDisplay("google", "Google DNS", listOf("8.8.8.8", "8.8.4.4"))
-                "doh-yandex" -> GoDnsDisplay("doh-yandex", "Яндекс DoH", listOf("common.dot.dns.yandex.net"))
-                "doh-cloudflare" -> GoDnsDisplay("doh-cloudflare", "Cloudflare DoH", listOf("cloudflare-dns.com"))
-                "doh-google" -> GoDnsDisplay("doh-google", "Google DoH", listOf("dns.google"))
+                "doh-yandex" -> GoDnsDisplay("doh-yandex", "Яндекс DoH", listOf("77.88.8.8", "common.dot.dns.yandex.net"))
+                "doh-cloudflare" -> GoDnsDisplay("doh-cloudflare", "Cloudflare DoH", listOf("1.1.1.1", "cloudflare-dns.com"))
+                "doh-google" -> GoDnsDisplay("doh-google", "Google DoH", listOf("8.8.8.8", "dns.google"))
                 "doh-custom" -> {
                     val urls = normalizeGoDnsDohUrls(customRaw)
                         .split(",")

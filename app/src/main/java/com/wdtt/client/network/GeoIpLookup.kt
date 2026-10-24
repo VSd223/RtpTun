@@ -1,63 +1,102 @@
 package com.wdtt.client
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
+import android.content.Context
+import android.util.Log
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.ConcurrentHashMap
 
 object GeoIpLookup {
-    private val ipRanges = listOf(
-        // Germany (DE)
-        "185.22." to "DE", "185.220." to "DE", "188.165." to "DE", "178.63." to "DE", "138.201." to "DE", "31.172." to "DE", "185.243." to "DE", "194.36." to "DE",
-        // Netherlands (NL)
-        "185.107." to "NL", "213.108." to "NL", "45.138." to "NL", "185.182." to "NL", "31.220." to "NL", "185.246." to "NL", "185.102." to "NL", "193.38." to "NL",
-        // Finland (FI)
-        "95.216." to "FI", "65.108." to "FI", "65.109." to "FI", "37.27." to "FI", "135.181." to "FI", "185.228." to "FI",
-        // Russia (RU)
-        "185.178." to "RU", "185.80." to "RU", "91.200." to "RU", "194.58." to "RU", "193.124." to "RU", "31.76." to "RU", "185.177." to "RU", "188.120." to "RU",
-        // USA (US)
-        "104.16." to "US", "104.28." to "US", "198.51." to "US", "140.82." to "US", "143.198." to "US", "172.67." to "US", "104.21." to "US",
-        // France (FR)
-        "51.15." to "FR", "163.172." to "FR", "51.254." to "FR", "162.19." to "FR", "185.207." to "FR",
-        // UK (GB)
-        "51.89." to "GB", "178.62." to "GB", "138.68." to "GB", "185.216." to "GB",
-        // Sweden (SE)
-        "185.213." to "SE", "89.238." to "SE", "185.189." to "SE", "193.180." to "SE",
-        // Turkey (TR)
-        "185.255." to "TR", "185.126." to "TR", "185.110." to "TR",
-        // Kazakhstan (KZ)
-        "185.100." to "KZ", "185.120." to "KZ", "2.72." to "KZ"
-    )
+    private val memoryCache = ConcurrentHashMap<String, String>()
 
-    fun resolveCountryCode(peer: String, name: String = ""): String {
+    // Быстрое определение по названию, чтобы флаг появлялся мгновенно, если страна указана в имени
+    fun guessCountryCodeFromName(name: String): String? {
         val n = name.lowercase()
-        when {
-            n.contains("германия") || n.contains("germany") || n.contains(" de ") || n.endsWith("de") -> return "DE"
-            n.contains("нидерланд") || n.contains("netherlands") || n.contains(" nl ") || n.endsWith("nl") -> return "NL"
-            n.contains("финлянди") || n.contains("finland") || n.contains(" fi ") || n.endsWith("fi") -> return "FI"
-            n.contains("россия") || n.contains("russia") || n.contains(" ru ") || n.endsWith("ru") -> return "RU"
-            n.contains("сша") || n.contains("usa") || n.contains(" us ") || n.endsWith("us") -> return "US"
-            n.contains("франци") || n.contains("france") || n.contains(" fr ") -> return "FR"
-            n.contains("швеци") || n.contains("sweden") || n.contains(" se ") -> return "SE"
-            n.contains("турци") || n.contains("turkey") || n.contains(" tr ") -> return "TR"
-            n.contains("казахстан") || n.contains("kazakhstan") || n.contains(" kz ") -> return "KZ"
+        return when {
+            n.contains("германия") || n.contains("germany") || n.contains(" de ") || n.endsWith("de") -> "DE"
+            n.contains("нидерланд") || n.contains("netherlands") || n.contains(" nl ") || n.endsWith("nl") -> "NL"
+            n.contains("финлянди") || n.contains("finland") || n.contains(" fi ") || n.endsWith("fi") -> "FI"
+            n.contains("россия") || n.contains("russia") || n.contains(" ru ") || n.endsWith("ru") -> "RU"
+            n.contains("сша") || n.contains("usa") || n.contains(" us ") || n.endsWith("us") -> "US"
+            n.contains("франци") || n.contains("france") || n.contains(" fr ") -> "FR"
+            n.contains("швеци") || n.contains("sweden") || n.contains(" se ") -> "SE"
+            n.contains("турци") || n.contains("turkey") || n.contains(" tr ") -> "TR"
+            n.contains("казахстан") || n.contains("kazakhstan") || n.contains(" kz ") -> "KZ"
+            n.contains("польша") || n.contains("poland") || n.contains(" pl ") -> "PL"
+            n.contains("украина") || n.contains("ukraine") || n.contains(" ua ") -> "UA"
+            n.contains("беларусь") || n.contains("belarus") || n.contains(" by ") -> "BY"
+            else -> null
         }
+    }
+
+    suspend fun resolveCountryCodeAsync(context: Context, peer: String, name: String): String {
+        // 1. Проверяем по имени (быстро)
+        guessCountryCodeFromName(name)?.let { return it }
 
         val host = PeerAddress.host(peer).trim()
-        for ((prefix, code) in ipRanges) {
-            if (host.startsWith(prefix)) return code
+        if (host.isEmpty()) return "XX"
+
+        // 2. Проверяем кэш в памяти
+        memoryCache[host]?.let { return it }
+
+        // 3. Проверяем постоянный кэш
+        val prefs = context.getSharedPreferences("geoip_cache", Context.MODE_PRIVATE)
+        prefs.getString(host, null)?.let {
+            memoryCache[host] = it
+            return it
         }
-        return "XX"
+
+        // 4. Запрашиваем через API
+        return withContext(Dispatchers.IO) {
+            try {
+                // Игнорируем локальные IP
+                if (host.startsWith("10.") || host.startsWith("192.168.") || host.startsWith("127.")) {
+                    return@withContext "XX"
+                }
+
+                val url = URL("https://api.country.is/$host")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.connectTimeout = 3000
+                connection.readTimeout = 3000
+                
+                if (connection.responseCode == 200) {
+                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    val json = JSONObject(response)
+                    val country = json.optString("country", "XX").uppercase()
+                    
+                    if (country != "XX" && country.isNotEmpty()) {
+                        memoryCache[host] = country
+                        prefs.edit().putString(host, country).apply()
+                        return@withContext country
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("GeoIpLookup", "Failed to resolve IP $host: ${e.message}")
+            }
+            "XX"
+        }
     }
 
     fun countryFlagEmoji(countryCode: String): String {
@@ -71,26 +110,40 @@ object GeoIpLookup {
 
 @Composable
 fun CountryFlagBadge(peer: String, name: String, modifier: Modifier = Modifier) {
-    val code = GeoIpLookup.resolveCountryCode(peer, name)
-    val flag = GeoIpLookup.countryFlagEmoji(code)
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+    val context = LocalContext.current
+    
+    // Сначала ставим флаг из имени или "глобус"
+    var code by remember(peer, name) { 
+        mutableStateOf(GeoIpLookup.guessCountryCodeFromName(name) ?: "XX") 
+    }
+
+    // Асинхронно запрашиваем по IP (если закэшировано - вернет сразу, иначе скачает не блокируя UI)
+    LaunchedEffect(peer, name) {
+        val resolved = GeoIpLookup.resolveCountryCodeAsync(context, peer, name)
+        if (resolved != "XX") {
+            code = resolved
+        }
+    }
+
+    Box(
         modifier = modifier
+            .size(36.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
+        contentAlignment = Alignment.Center
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(flag, fontSize = 13.sp)
+        if (code == "XX") {
             Text(
-                text = code.uppercase(),
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
+                text = "🌐",
+                fontSize = 20.sp,
+                modifier = Modifier.padding(bottom = 2.dp)
+            )
+        } else {
+            coil.compose.AsyncImage(
+                model = "https://flagcdn.com/w40/${code.lowercase()}.png",
+                contentDescription = code,
+                modifier = Modifier.size(24.dp).clip(RoundedCornerShape(4.dp)),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop
             )
         }
     }

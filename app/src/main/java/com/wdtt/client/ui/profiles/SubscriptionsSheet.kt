@@ -1,10 +1,24 @@
 package com.wdtt.client.ui
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.*
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.clickable
+import android.widget.Toast
+import android.content.Context
+import android.content.ClipboardManager
+import android.content.ClipData
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.IconButton
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.PaddingValues
@@ -189,6 +203,72 @@ fun EditSubscriptionDialog(
     )
 }
 
+private fun formatMaskedUrl(url: String): String {
+    val trimmed = url.trim()
+    if (trimmed.isBlank()) return ""
+    return try {
+        val uri = java.net.URI(trimmed)
+        val host = uri.host ?: return trimmed
+        val scheme = uri.scheme ?: "https"
+        val path = uri.path ?: ""
+        if (path.length > 12) {
+            val start = path.take(6)
+            val end = path.takeLast(4)
+            "$scheme://$host$start...$end"
+        } else {
+            "$scheme://$host$path"
+        }
+    } catch (_: Exception) {
+        if (trimmed.length > 30) {
+            trimmed.take(18) + "..." + trimmed.takeLast(6)
+        } else {
+            trimmed
+        }
+    }
+}
+
+@Composable
+fun AnimatedDotsLoading(modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "dots")
+    val dot1Alpha by infiniteTransition.animateFloat(
+        initialValue = 0.2f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(400, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dot1"
+    )
+    val dot2Alpha by infiniteTransition.animateFloat(
+        initialValue = 0.2f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(400, delayMillis = 133, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dot2"
+    )
+    val dot3Alpha by infiniteTransition.animateFloat(
+        initialValue = 0.2f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(400, delayMillis = 266, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dot3"
+    )
+
+    Row(
+        modifier = modifier.padding(horizontal = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF00E676).copy(alpha = dot1Alpha)))
+        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF00E676).copy(alpha = dot2Alpha)))
+        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF00E676).copy(alpha = dot3Alpha)))
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubscriptionInfoCard(
@@ -204,7 +284,6 @@ fun SubscriptionInfoCard(
 ) {
     val isExpanded = !isProfilesHidden
     var showEditDialog by remember { mutableStateOf(false) }
-    var showDeleteDialog by remember { mutableStateOf(false) }
 
     val hasLimit = sub.trafficLimitMb > 0
     val hasTraffic = sub.remoteTrafficUsedMb > 0 || hasLimit
@@ -243,7 +322,7 @@ fun SubscriptionInfoCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = if (sub.name.isNotBlank()) sub.name else sub.url,
+                        text = if (sub.name.isNotBlank()) sub.name else formatMaskedUrl(sub.url),
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                         fontWeight = FontWeight.SemiBold,
@@ -257,45 +336,52 @@ fun SubscriptionInfoCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    IconButton(
+                        onClick = onRefresh,
+                        enabled = !isRefreshing,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        if (isRefreshing) {
+                            AnimatedDotsLoading()
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Обновить",
+                                tint = Color(0xFF00E676),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                     Icon(
                         imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = if (isExpanded) "Свернуть" else "Раскрыть",
                         tint = contentColor,
                         modifier = Modifier.size(20.dp)
                     )
-                    TextButton(
-                        onClick = onRefresh,
-                        enabled = !isRefreshing,
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                        modifier = Modifier.height(28.dp)
-                    ) {
-                        Text(
-                            if (isRefreshing) "..." else "ОБНОВИТЬ",
-                            color = Color(0xFF00E676),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp
-                        )
-                    }
                 }
             }
 
-            AnimatedVisibility(
-                visible = isExpanded,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
+            if (isExpanded) {
                 Column(
                     modifier = Modifier.padding(top = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(
-                        sub.url,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        color = contentColor.copy(alpha = 0.85f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    val context = LocalContext.current
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = formatMaskedUrl(sub.url),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            color = contentColor.copy(alpha = 0.85f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
 
                     if (sub.description.isNotBlank()) {
                         Text(
@@ -336,32 +422,32 @@ fun SubscriptionInfoCard(
 
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        IconButton(
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Subscription URL", sub.url))
+                                Toast.makeText(context, "Ссылка подписки скопирована!", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Скопировать ссылку", tint = contentColor.copy(alpha = 0.85f), modifier = Modifier.size(16.dp))
+                        }
                         if (onEditSub != null) {
-                            OutlinedButton(
+                            IconButton(
                                 onClick = { showEditDialog = true },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                modifier = Modifier.height(32.dp),
-                                shape = RoundedCornerShape(8.dp)
+                                modifier = Modifier.size(32.dp)
                             ) {
-                                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Редактировать ссылку", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Icon(Icons.Default.Edit, contentDescription = "Редактировать", tint = contentColor.copy(alpha = 0.85f), modifier = Modifier.size(16.dp))
                             }
                         }
-
-                        OutlinedButton(
-                            onClick = { showDeleteDialog = true },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                            modifier = Modifier.height(32.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        IconButton(
+                            onClick = { onDelete() },
+                            modifier = Modifier.size(32.dp)
                         ) {
-                            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Удалить", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Icon(Icons.Default.Delete, contentDescription = "Удалить", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                         }
                     }
 
@@ -384,17 +470,6 @@ fun SubscriptionInfoCard(
             onConfirm = { name, url ->
                 showEditDialog = false
                 onEditSub(name, url)
-            }
-        )
-    }
-
-    if (showDeleteDialog) {
-        DeleteSubscriptionDialog(
-            sub = sub,
-            onDismiss = { showDeleteDialog = false },
-            onConfirm = {
-                showDeleteDialog = false
-                onDelete()
             }
         )
     }

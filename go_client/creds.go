@@ -779,6 +779,18 @@ func GetCreds(ctx context.Context, link string, streamID int) (string, string, [
 
 func goDNSServersForPreset(preset string) []string {
 	switch strings.ToLower(strings.TrimSpace(preset)) {
+	case "mts":
+		return []string{"212.188.4.10:53", "195.34.32.116:53", "213.87.0.1:53", "213.87.1.1:53"}
+	case "beeline":
+		return []string{"10.10.22.3:53", "194.67.2.114:53", "194.67.1.154:53", "85.249.22.248:53", "85.249.22.249:53", "85.249.22.251:53", "85.249.22.250:53"}
+	case "megafon":
+		return []string{"10.10.22.3:53", "83.169.217.22:53", "195.208.4.1:53"}
+	case "tele2":
+		return []string{"176.59.62.126:53", "176.59.62.125:53"}
+	case "sbermobile":
+		return []string{"176.59.31.182:53", "176.59.31.183:53", "176.59.223.159:53", "176.59.95.243:53", "176.59.63.148:53", "176.59.63.204:53", "176.59.127.156:53", "176.59.62.125:53", "176.59.62.126:53"}
+	case "volna":
+		return []string{"80.245.112.23:53", "195.208.4.1:53", "194.147.49.16:53"}
 	case "cloudflare":
 		return []string{"1.1.1.1:53", "1.0.0.1:53"}
 	case "google":
@@ -829,6 +841,18 @@ func goDNSLabel(arg string) string {
 		return "Свой DoH"
 	}
 	switch strings.ToLower(arg) {
+	case "mts":
+		return "МТС DNS"
+	case "beeline":
+		return "Билайн DNS"
+	case "megafon":
+		return "Мегафон DNS"
+	case "tele2":
+		return "Теле2 DNS"
+	case "sbermobile":
+		return "Сбермобайл DNS"
+	case "volna":
+		return "Волна мобайл DNS"
 	case "cloudflare":
 		return "Cloudflare"
 	case "google":

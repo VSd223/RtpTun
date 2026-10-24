@@ -19,7 +19,7 @@ import androidx.core.content.FileProvider
 import com.rtptun.client.BuildConfig
 
 const val UPDATE_CHECK_NEVER = -1
-const val DEFAULT_UPDATE_CHECK_INTERVAL_HOURS = 12
+const val DEFAULT_UPDATE_CHECK_INTERVAL_HOURS = 24
 
 private const val UPDATE_LOG_TAG = "RTpTUN"
 private const val GITHUB_RELEASES_URL = ""
@@ -335,8 +335,22 @@ private fun pickApkAssetUrl(assets: JSONArray): String? {
         apks += ApkAsset(name, url)
     }
     if (apks.isEmpty()) return null
+
+    // Возвращаем приоритет для universal APK при скачивании обновлений
     return apks.firstOrNull { it.name.contains("universal", ignoreCase = true) }?.url
-        ?: apks.firstOrNull { it.name.contains("arm64", ignoreCase = true) }?.url
+        ?: apks.firstOrNull { apk ->
+            val lowerName = apk.name.lowercase()
+            val supportedAbis = android.os.Build.SUPPORTED_ABIS ?: emptyArray()
+            supportedAbis.any { abi ->
+                val targetPattern = when {
+                    abi.contains("arm64", ignoreCase = true) || abi.contains("aarch64", ignoreCase = true) -> "arm64"
+                    abi.contains("v7", ignoreCase = true) || abi.contains("armeabi", ignoreCase = true) -> "v7a"
+                    abi.contains("x86_64", ignoreCase = true) -> "x86_64"
+                    else -> null
+                }
+                targetPattern != null && lowerName.contains(targetPattern)
+            }
+        }?.url
         ?: apks.first().url
 }
 

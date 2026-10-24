@@ -22,8 +22,8 @@ android {
         applicationId = "com.rtptun.client"
         minSdk = 28
         targetSdk = 35
-        versionCode = 42
-        versionName = "1.3.3"
+        versionCode = 43
+        versionName = "1.3.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -32,12 +32,16 @@ android {
 
     }
 
+    androidResources {
+        localeFilters += listOf("ru", "en")
+    }
+
     splits {
         abi {
             isEnable = true
             reset()
             include(*targetAbis.toTypedArray())
-            isUniversalApk = targetAbis.size > 1
+            isUniversalApk = true
         }
     }
 
@@ -106,6 +110,8 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += "/META-INF/INDEX.LIST"
             excludes += "/META-INF/DEPENDENCIES"
+            excludes += "/META-INF/*.version"
+            excludes += "/META-INF/kotlinx_*.version"
         }
     }
 
@@ -167,4 +173,6 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
     implementation("androidx.webkit:webkit:1.12.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("io.coil-kt:coil-compose:2.6.0")
 }

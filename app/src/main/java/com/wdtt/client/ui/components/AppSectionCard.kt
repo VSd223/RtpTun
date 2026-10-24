@@ -1,5 +1,6 @@
 package com.wdtt.client.ui
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -65,6 +66,7 @@ fun AppSectionCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .animateContentSize()
                 .padding(contentPadding),
             verticalArrangement = verticalArrangement,
             content = content

@@ -10,3 +10,11 @@
 
 -dontwarn com.google.android.gms.**
 -dontwarn com.google.mlkit.**
+
+# WorkManager and Room (fixes java.lang.NoSuchMethodException: androidx.work.impl.WorkDatabase_Impl.<init>)
+-keep class androidx.work.impl.WorkDatabase_Impl {
+    <init>();
+}
+-keep class androidx.work.impl.WorkDatabase_Impl$* { *; }
+-keep class androidx.room.** { *; }
+
